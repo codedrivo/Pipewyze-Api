@@ -1,0 +1,16 @@
+{
+  "apps": [
+    {
+      "name": "PipeWyze",
+      "script": "src/index.js",
+      "instances": 1,
+      "autorestart": true,
+      "watch": true,
+      "ignore_watch": [
+        "node_modules",
+        "logs"
+      ],
+      "time": true
+    }
+  ]
+}
