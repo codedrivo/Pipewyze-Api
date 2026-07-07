@@ -18,6 +18,10 @@ const options = {
         url: `http://localhost:${config.port || 3030}/v1`,
         description: 'Local server',
       },
+      {
+        url: 'https://api-pipewyze.codedrivo.com/v1', 
+        description: 'Live server',
+      },
     ],
 
     components: {

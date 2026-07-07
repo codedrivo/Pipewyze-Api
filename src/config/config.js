@@ -27,6 +27,11 @@ const envVarsSchema = Joi.object()
     APPEMAIL: Joi.string().email().optional(),
     APPPASSWORD: Joi.string().optional(),
     EMAIL_FROM: Joi.string().email().optional(),
+    AWS_ACCESS_KEY_ID: Joi.string().optional(),
+    AWS_SECRET_ACCESS_KEY: Joi.string().optional(),
+    AWS_REGION: Joi.string().optional(),
+    S3_BUCKET_PATH: Joi.string().optional(),
+    AWS_CLOUDFRONT_URL: Joi.string().optional(),
   })
   .unknown();
 
@@ -62,5 +67,12 @@ module.exports = {
       user: envVars.APPEMAIL,
       pass: envVars.APPPASSWORD,
     },
+  },
+  s3: {
+    accessKeyId: envVars.AWS_ACCESS_KEY_ID,
+    secretAccessKey: envVars.AWS_SECRET_ACCESS_KEY,
+    region: envVars.AWS_REGION,
+    S3_BUCKET_PATH: envVars.S3_BUCKET_PATH,
+    cloudfrontUrl: envVars.AWS_CLOUDFRONT_URL,
   },
 };
