@@ -20,26 +20,7 @@ app.use(morgan.successHandler);
 app.use(morgan.errorHandler);
 
 // only content type application/json allowed
-// app.use(
-//   express.json({
-//     verify: (req, res, buf) => {
-//       // Only capture raw body for stripe webhooks
-//       if (req.originalUrl.includes('/webhook')) {
-//         req.rawBody = buf;
-//       }
-//     },
-//   }),
-// );
-
-app.use(
-  express.json({
-    verify: (req, res, buf) => {
-      if (req.originalUrl.includes('/stripe/webhook')) {
-        req.rawBody = buf;
-      }
-    },
-  }),
-);
+app.use(express.json());
 
 // set security headers automatically
 app.use(helmet());
@@ -64,6 +45,7 @@ app.use(
       'http://localhost:5000',
       'https://admin.pipewyze.com',
       'https://pipewyze.com',
+      'https://api-pipewyze.codedrivo.com',
     ],
   }),
 );
@@ -81,6 +63,7 @@ if (config.env === 'dev') {
   app.use('/docs', swaggerUi.serve, swaggerUi.setup(specs));
 }
 
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use('/', appRouter);
 app.use('/v1', appRouter);
 
