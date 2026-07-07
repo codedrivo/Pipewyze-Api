@@ -1,56 +1,59 @@
+const { S3Client } = require('@aws-sdk/client-s3');
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
+const multerS3 = require('multer-s3');
+const config = require('../config/config');
 
-// Local disk storage configuration
-const uploadDir = path.join(__dirname, '../../uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadDir);
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
+const s3 = new S3Client({
+  region: config.s3.region,
+  credentials: {
+    accessKeyId: config.s3.accessKeyId,
+    secretAccessKey: config.s3.secretAccessKey,
   },
 });
+
+const s3Storage = multerS3({
+  s3: s3,
+  bucket: config.s3.S3_BUCKET_PATH,
+  contentType: multerS3.AUTO_CONTENT_TYPE,
+  key: function (req, file, cb) {
+    const extension = file.originalname.split('.').pop(); // Get the extension from the original file name
+    const uniqueKey = 'PipeWyze/' + Date.now().toString() + '.' + extension; // Use a unique key with the extension
+    cb(null, uniqueKey);
+  },
+});
+
+// Custom storage engine wrapper to replace S3 URL with CloudFront URL from config
+const customStorage = {
+  _handleFile: function (req, file, cb) {
+    s3Storage._handleFile(req, file, function (err, info) {
+      if (err) return cb(err);
+
+      // Override the location with CloudFront URL if configured
+      if (info && info.key && config.s3.cloudfrontUrl) {
+        const baseUrl = config.s3.cloudfrontUrl.replace(/\/$/, '');
+        info.location = `${baseUrl}/${info.key}`;
+      }
+
+      cb(null, info);
+    });
+  },
+  _removeFile: function (req, file, cb) {
+    s3Storage._removeFile(req, file, cb);
+  },
+};
 
 const upload = multer({
-  storage: storage,
+  storage: s3Storage,
   limits: {
-    fileSize: 1024 * 1024 * 5, // 5MB limit
+    fileSize: 3 * 1024 * 1024, // 3MB limit to accommodate high-res mobile photos
   },
 });
-
-// Helper to patch req.file.location or req.files[fieldName][i].location for diskStorage
-// so it is compatible with controllers expecting image URLs.
-const patchFileLocation = (req) => {
-  const host = req.get('host') || 'localhost:3000';
-  const protocol = req.protocol || 'http';
-  
-  if (req.file && !req.file.location) {
-    req.file.location = `${protocol}://${host}/uploads/${req.file.filename}`;
-  }
-  if (req.files) {
-    Object.keys(req.files).forEach((key) => {
-      req.files[key].forEach((file) => {
-        if (!file.location) {
-          file.location = `${protocol}://${host}/uploads/${file.filename}`;
-        }
-      });
-    });
-  }
-};
 
 const customSingle = (fieldName) => {
   const middleware = upload.single(fieldName);
   return (req, res, next) => {
     middleware(req, res, (err) => {
       if (err) return next(err);
-      patchFileLocation(req);
       next();
     });
   };
@@ -61,7 +64,6 @@ const customFields = (fieldsArray) => {
   return (req, res, next) => {
     middleware(req, res, (err) => {
       if (err) return next(err);
-      patchFileLocation(req);
       next();
     });
   };
