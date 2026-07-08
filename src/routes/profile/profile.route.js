@@ -7,7 +7,7 @@ const validator = require('express-joi-validation').createValidator({
 });
 const upload = require('../../middlewares/multer.middleware');
 
-router.use(auth('user', true));
+router.use(auth());
 
 router.get(
   '/get-user/:id',
@@ -26,6 +26,7 @@ router.patch(
 );
 
 router.get('/', controller.getProfile);
+router.get('/me', controller.getProfile);
 
 router.patch(
   '/update',
