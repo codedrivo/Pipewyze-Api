@@ -48,7 +48,7 @@ const sendPhoneOTP = async (phone) => {
   }
 };
 
-const sendEmailOTP = async (userEmail, type, tempID) => {
+const sendEmailOTP = async (userEmail, type, tempID, subject = 'Email Verification') => {
   try {
     const otp = await createOtp({
       identifier: userEmail,
@@ -57,7 +57,7 @@ const sendEmailOTP = async (userEmail, type, tempID) => {
     console.log(`[DEV OTP EMAIL] To ${userEmail}: Email Verification OTP is ${otp}`);
     await emailService.sendEmail(
       userEmail,
-      'Email Verification',
+      subject,
       `Your verification code is ${otp}. It will expire in 5 minutes.`,
       `<p>Your verification code is: <b>${otp}</b>. It will expire in 5 minutes.</p>`
     );
