@@ -27,6 +27,7 @@ const forgotPassword = catchAsync(async (req, res, next) => {
     req.body.email,
     'email',
     'd-c60beffa1f45430eb5ed565009adfef6',
+    'Password Reset',
   );
   res
     .status(200)

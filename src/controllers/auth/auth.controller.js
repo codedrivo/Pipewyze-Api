@@ -55,7 +55,12 @@ const forgotPassword = catchAsync(async (req, res, next) => {
       message: 'No account found with this email address',
     });
   }
-  await otps.sendEmailOTP(email, 'email', 'd-c60beffa1f45430eb5ed565009adfef6');
+  await otps.sendEmailOTP(
+    email,
+    'email',
+    'd-c60beffa1f45430eb5ed565009adfef6',
+    'Password Reset',
+  );
   res.status(200).send({
     message: 'OTP sent to your email address',
   });
