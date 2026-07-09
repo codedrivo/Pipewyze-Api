@@ -73,8 +73,14 @@ module.exports = router;
  *             schema:
  *               type: object
  *               properties:
- *                 user:
- *                   $ref: '#/components/schemas/User'
+ *                 message:
+ *                   type: string
+ *                   example: Profile retrieved successfully
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     user:
+ *                       $ref: '#/components/schemas/User'
  *       401:
  *         description: Unauthorized, user needs to be logged in
  *       404:
