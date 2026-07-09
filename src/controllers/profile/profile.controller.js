@@ -49,7 +49,10 @@ const getProfile = catchAsync(async (req, res, next) => {
   delete userData.password;
 
   res.status(200).send({
-    user: userData,
+    message: 'Profile retrieved successfully',
+    data: {
+      user: userData,
+    },
   });
 });
 
