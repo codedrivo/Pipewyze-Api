@@ -41,25 +41,34 @@ const sendPhoneOTP = async (phone) => {
       identifier: phone,
       type: 'phone',
     });
-    console.log(`[DEV OTP SMS] To ${phone}: Your verification code is ${otp}. It will expire in 5 minutes.`);
+    console.log(
+      `[DEV OTP SMS] To ${phone}: Your verification code is ${otp}. It will expire in 5 minutes.`,
+    );
     return true;
   } catch (error) {
     throw new ApiError(error.message || 'Failed to send OTP', 500);
   }
 };
 
-const sendEmailOTP = async (userEmail, type, tempID, subject = 'Email Verification') => {
+const sendEmailOTP = async (
+  userEmail,
+  type,
+  tempID,
+  subject = 'Email Verification',
+) => {
   try {
     const otp = await createOtp({
       identifier: userEmail,
       type: type,
     });
-    console.log(`[DEV OTP EMAIL] To ${userEmail}: Email Verification OTP is ${otp}`);
+    console.log(
+      `[DEV OTP EMAIL] To ${userEmail}: Email Verification OTP is ${otp}`,
+    );
     await emailService.sendEmail(
       userEmail,
       subject,
       `Your verification code is ${otp}. It will expire in 5 minutes.`,
-      `<p>Your verification code is: <b>${otp}</b>. It will expire in 5 minutes.</p>`
+      `<p>Your verification code is: <b>${otp}</b>. It will expire in 5 minutes.</p>`,
     );
     return true;
   } catch (e) {
@@ -74,7 +83,9 @@ const sendSupportEmail = async (userEmail, tempID, data) => {
     await emailService.sendEmail(
       userEmail,
       'Lead Support Request',
-      `Support request details:\nName: ${data.fullname}\nEmail: ${data.email}\nPhone: ${data.phone || 'N/A'}\nMessage: ${data.message}`
+      `Support request details:\nName: ${data.fullname}\nEmail: ${
+        data.email
+      }\nPhone: ${data.phone || 'N/A'}\nMessage: ${data.message}`,
     );
     return true;
   } catch (e) {
@@ -84,15 +95,36 @@ const sendSupportEmail = async (userEmail, tempID, data) => {
 
 const checkVerifyOtp = async (identifier, otp, type) => {
   const normalizedIdentifier = identifier.toLowerCase();
-  const record = await Otp.findOne({
+  const recordByIdentifier = await Otp.findOne({
     identifier: normalizedIdentifier,
-    otp,
     type,
     is_verified: false,
   });
-  if (!record) throw new ApiError('Invalid or expired OTP', 400);
-  record.is_verified = true;
-  await record.save();
+
+  if (!recordByIdentifier) {
+    throw new ApiError(
+      'The OTP has expired or was not requested. Please request a new code.',
+      400,
+    );
+  }
+
+  if (recordByIdentifier.otp !== otp) {
+    throw new ApiError('The OTP you entered is incorrect', 400);
+  }
+
+  const createdAt = recordByIdentifier.createdAt;
+  const currentTime = new Date();
+  const timeDifferenceInMilliseconds = currentTime - createdAt;
+  const timeDifferenceInMinutes = timeDifferenceInMilliseconds / (1000 * 60);
+
+  if (
+    timeDifferenceInMinutes > Number(config.jwt.resetPasswordExpirationMinutes)
+  ) {
+    throw new ApiError('The OTP has expired. Please request a new one.', 400);
+  }
+
+  recordByIdentifier.is_verified = true;
+  await recordByIdentifier.save();
   return true;
 };
 
@@ -104,11 +136,28 @@ const isVerifyOtp = async (identifier, otp, type) => {
     type,
     is_verified: true,
   });
-  if (!record)
+  if (!record) {
+    const recordByIdentifier = await Otp.findOne({
+      identifier: normalizedIdentifier,
+      type,
+    });
+    if (!recordByIdentifier) {
+      throw new ApiError(
+        'The OTP session has expired. Please request a new code.',
+        400,
+      );
+    }
+    if (recordByIdentifier.otp !== otp) {
+      throw new ApiError('The OTP you entered is incorrect', 400);
+    }
+    if (!recordByIdentifier.is_verified) {
+      throw new ApiError('The OTP has not been verified yet.', 400);
+    }
     throw new ApiError(
-      'Please go to the Forgot Password page and request a new code.',
+      'The OTP verification session is invalid or has expired. Please request a new code.',
       400,
     );
+  }
   await Otp.deleteOne({ _id: record._id });
   return true;
 };
@@ -123,24 +172,26 @@ const generateOtp = async (user, type) => {
     is_verified: false,
   });
   if (!otp) {
-    throw new ApiError('Error In OTP generations', 500);
+    throw new ApiError('Failed to generate OTP. Please try again.', 500);
   }
-  console.log(`[DEV OTP EMAIL] To ${user.email}: Type: ${type}, OTP: ${otp.otp}`);
-  
+  console.log(
+    `[DEV OTP EMAIL] To ${user.email}: Type: ${type}, OTP: ${otp.otp}`,
+  );
+
   const isEmailVerify = type === 'emailVerify' || type === 'resend';
   const subject = isEmailVerify ? 'Email Verification' : 'Password Reset OTP';
   await emailService.sendEmail(
     user.email,
     subject,
     `Your OTP code is ${otp.otp}`,
-    `<p>Your OTP code is: <b>${otp.otp}</b></p>`
+    `<p>Your OTP code is: <b>${otp.otp}</b></p>`,
   );
 };
 
 const getOtpIfVerified = async (email, otp) => {
   const otpindb = await Otp.findOne({ email, otp });
   if (!otpindb) {
-    throw new ApiError('Unverified Or Invalid OTP', 400);
+    throw new ApiError('The OTP has not been verified or is invalid', 400);
   }
   return Otp.deleteOne({ _id: otpindb._id });
 };
@@ -153,7 +204,7 @@ const resendOtp = async (user) => {
   }
 
   if (!otp) {
-    throw new ApiError('Error In OTP generations', 500);
+    throw new ApiError('Failed to generate OTP. Please try again.', 500);
   }
 
   console.log(`[DEV OTP EMAIL] To ${user.email}: Resend OTP: ${otp.otp}`);
@@ -161,7 +212,7 @@ const resendOtp = async (user) => {
     user.email,
     'Password Reset OTP',
     `Your password reset OTP code is ${otp.otp}`,
-    `<p>Your password reset OTP code is: <b>${otp.otp}</b></p>`
+    `<p>Your password reset OTP code is: <b>${otp.otp}</b></p>`,
   );
 };
 
@@ -169,7 +220,7 @@ const verifyOtp = async (email, otp) => {
   const otpindb = await Otp.findOne({ identifier: email, otp });
 
   if (!otpindb) {
-    throw new ApiError('Invalid OTP', 400);
+    throw new ApiError('The OTP you entered is incorrect', 400);
   }
 
   const createdAt = otpindb.createdAt;
@@ -182,7 +233,7 @@ const verifyOtp = async (email, otp) => {
   if (
     timeDifferenceInMinutes > Number(config.jwt.resetPasswordExpirationMinutes)
   ) {
-    throw new ApiError('OTP expired', 400);
+    throw new ApiError('The OTP has expired. Please request a new one.', 400);
   }
 
   otpindb.is_verified = true;
