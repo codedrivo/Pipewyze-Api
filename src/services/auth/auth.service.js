@@ -32,11 +32,15 @@ const createUser = async (data) => {
 };
 
 // User login
-const loginUser = async (email, password) => {
+const loginUser = async (email, password, role) => {
   const user = await User.findOne({ email });
 
   if (!user) {
     throw new ApiError('User not found', 404);
+  }
+
+  if (role && user.role !== role) {
+    throw new ApiError('Invalid credentials or role mismatch', 403);
   }
 
   if (!['home-owner', 'apprentice', 'licensed-plumber'].includes(user.role)) {

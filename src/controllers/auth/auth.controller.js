@@ -31,9 +31,9 @@ const register = catchAsync(async (req, res, next) => {
 
 // Login
 const login = catchAsync(async (req, res, next) => {
-  const { email, password } = req.body;
+  const { email, password, role } = req.body;
   // Login service (password check etc)
-  const user = await service.loginUser(email, password);
+  const user = await service.loginUser(email, password, role);
 
   const tokens = await token.generateAuthTokens(user);
 

@@ -176,6 +176,11 @@ module.exports = router;
  *                 format: password
  *                 description: User's password
  *                 example: P@ssw0rd!
+ *               role:
+ *                 type: string
+ *                 description: User's role
+ *                 enum: [home-owner, apprentice, licensed-plumber]
+ *                 example: home-owner
  *     responses:
  *       200:
  *         description: Login successful
