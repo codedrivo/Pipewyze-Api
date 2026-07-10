@@ -40,8 +40,17 @@ const loginUser = async (email, password, role) => {
   }
 
   if (role && user.role !== role) {
+    const formatRole = (r) => {
+      if (r === 'licensed-plumber') return 'licensed plumber';
+      if (r === 'home-owner') return 'home owner';
+      return r;
+    };
+    const userRoleDisplay = formatRole(user.role);
+    const requestedRoleDisplay = formatRole(role);
+    const userArticle = userRoleDisplay.startsWith('a') ? 'an' : 'a';
+    const requestedArticle = requestedRoleDisplay.startsWith('a') ? 'an' : 'a';
     throw new ApiError(
-      `This account is registered under a different role: ${user.role}`,
+      `You are ${userArticle} ${userRoleDisplay}, you cannot login as ${requestedArticle} ${requestedRoleDisplay}.`,
       403,
     );
   }
