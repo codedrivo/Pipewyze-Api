@@ -1,11 +1,7 @@
 const Joi = require('joi');
 const { email } = require('./common.validator');
 const password = (value, helpers) => {
-  if (
-    !/^(?=.*[a-zA-Z])(?=.*[0-9]).{8,}$/.test(
-      value,
-    )
-  ) {
+  if (!/^(?=.*[a-zA-Z])(?=.*[0-9]).{8,}$/.test(value)) {
     return helpers.message(
       'Password must be at least 8 characters and contain both letters and numbers',
     );
@@ -41,12 +37,17 @@ const register = Joi.object({
   email: email.required(),
   phone: Joi.string().required(),
   password: Joi.string().required().custom(password),
-  role: Joi.string().valid('home-owner', 'apprentice', 'licensed-plumber').default('home-owner'),
+  role: Joi.string()
+    .valid('home-owner', 'apprentice', 'licensed-plumber')
+    .default('home-owner'),
 });
 
 const login = Joi.object({
   email: email.required(),
   password: Joi.string().required(),
+  role: Joi.string()
+    .valid('home-owner', 'apprentice', 'licensed-plumber')
+    .required(),
 });
 
 const forgot = Joi.object({
