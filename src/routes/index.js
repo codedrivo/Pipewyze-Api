@@ -7,6 +7,7 @@ const adminUserRoute = require('./admin/user.route');
 const adminDashboardRoute = require('./admin/dashboard.route');
 const adminSettingRoute = require('./admin/setting.route');
 const adminPageRoute = require('./admin/page.route');
+const adminEquipmentRoute = require('./admin/equipment.route');
 const profileRoute = require('./profile/profile.route');
 
 const apprenticeRoute = require('./public/apprentice/apprentice.route');
@@ -23,6 +24,7 @@ router.use('/admin/user', adminUserRoute);
 router.use('/admin/dashboard', adminDashboardRoute);
 router.use('/admin/setting', adminSettingRoute);
 router.use('/admin/page', adminPageRoute);
+router.use('/admin/equipment', adminEquipmentRoute);
 
 router.use('/profile', profileRoute);
 
