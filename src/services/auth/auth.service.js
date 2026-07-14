@@ -15,10 +15,10 @@ const createUser = async (data) => {
 
   if (existingUser) {
     if (existingUser.email === data.email) {
-      throw new ApiError('Email already exists', 400);
+      throw new ApiError('This email is already registered', 400);
     }
     if (data.phone && existingUser.phone === data.phone) {
-      throw new ApiError('Phone number already exists', 400);
+      throw new ApiError('This phone number is already registered', 400);
     }
   }
 
@@ -36,11 +36,23 @@ const loginUser = async (email, password, role) => {
   const user = await User.findOne({ email });
 
   if (!user) {
-    throw new ApiError('User not found', 404);
+    throw new ApiError('No account found with this email address', 404);
   }
 
   if (role && user.role !== role) {
-    throw new ApiError('Invalid credentials or role mismatch', 403);
+    const formatRole = (r) => {
+      if (r === 'licensed-plumber') return 'licensed plumber';
+      if (r === 'home-owner') return 'home owner';
+      return r;
+    };
+    const userRoleDisplay = formatRole(user.role);
+    const requestedRoleDisplay = formatRole(role);
+    const userArticle = userRoleDisplay.startsWith('a') ? 'an' : 'a';
+    const requestedArticle = requestedRoleDisplay.startsWith('a') ? 'an' : 'a';
+    throw new ApiError(
+      `You are ${userArticle} ${userRoleDisplay}, you cannot login as ${requestedArticle} ${requestedRoleDisplay}.`,
+      403,
+    );
   }
 
   if (!['home-owner', 'apprentice', 'licensed-plumber'].includes(user.role)) {
@@ -48,7 +60,7 @@ const loginUser = async (email, password, role) => {
   }
 
   if (!(await user.isPasswordMatch(password))) {
-    throw new ApiError('Invalid email or password', 401);
+    throw new ApiError('Incorrect password', 401);
   }
   user.online = true;
   await user.save();
@@ -102,7 +114,7 @@ const deleteAccountById = async (id) => {
 const updatePassword = async (user, newpass, oldpass) => {
   const isMatch = await bcrypt.compare(oldpass, user.password);
   if (!isMatch) {
-    throw new ApiError('Password does not match', 400);
+    throw new ApiError('The old password you entered is incorrect', 400);
   }
   if (oldpass.trim() === newpass.trim()) {
     throw new ApiError(

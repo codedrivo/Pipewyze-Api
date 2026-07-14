@@ -13,7 +13,7 @@ router.post(
 
 router.post(
   '/login',
-  validator.body(validationSchema.login),
+  validator.body(validationSchema.adminLogin),
   controller.adminLogin,
 );
 

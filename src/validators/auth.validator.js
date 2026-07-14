@@ -50,6 +50,11 @@ const login = Joi.object({
     .required(),
 });
 
+const adminLogin = Joi.object({
+  email: email.required(),
+  password: Joi.string().required(),
+});
+
 const forgot = Joi.object({
   email: email.required(),
 });
@@ -101,6 +106,7 @@ const phoneVerify = Joi.object({
 
 module.exports = {
   login,
+  adminLogin,
   forgot,
   reset,
   tokens,

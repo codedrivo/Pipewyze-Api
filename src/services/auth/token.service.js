@@ -39,7 +39,7 @@ const generateAuthTokens = async (user) => {
 const verifyToken = async (token, type) => {
   const tokenInDb = await Token.findOne({ token, type });
   if (!tokenInDb) {
-    throw new ApiError('Token blacklisted', 401);
+    throw new ApiError('Your session has expired. Please log in again.', 401);
   }
   return jwt.verify(token, config.jwt.secret, {
     algorithm: config.jwt.algo,
