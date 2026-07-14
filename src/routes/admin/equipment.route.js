@@ -7,7 +7,7 @@ const validator = require('express-joi-validation').createValidator({
   passError: true,
 });
 
-router.use(auth('admin'));
+router.use(auth(['admin', 'licensed-plumber']));
 
 router.get(
   '/plumber/:plumberId',
