@@ -19,7 +19,7 @@ const options = {
         description: 'Local server',
       },
       {
-        url: 'https://api-pipewyze.codedrivo.com/v1', 
+        url: 'https://api-pipewyze.codedrivo.com/v1',
         description: 'Live server',
       },
     ],

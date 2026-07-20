@@ -81,19 +81,14 @@ const buildContactHtml = ({ firstName, lastName, email, phone, message }) => {
 };
 
 const saveContact = async (contactData) => {
-
   try {
     const normalized = normalizeContactData(contactData);
 
-
     const settings = await Settings.findOne().select('adminEmail -_id');
-
 
     const recipient = settings?.adminEmail || config.email.from;
 
-
     if (!recipient) {
-
       throw new ApiError('Support email is not configured', 500);
     }
 
@@ -105,14 +100,16 @@ const saveContact = async (contactData) => {
     const moment = require('moment');
     const submittedOn = moment().format('MM/DD/YYYY');
 
-
     try {
       await emailService.sendTemplateEmail({
         to: recipient,
         subject,
         templateName: 'contact',
         variables: {
-          name: `${normalized.firstName || ''} ${normalized.lastName || ''}`.trim() || 'Guest',
+          name:
+            `${normalized.firstName || ''} ${
+              normalized.lastName || ''
+            }`.trim() || 'Guest',
           email: normalized.email,
           phone: normalized.phone,
           date: submittedOn,
@@ -120,12 +117,9 @@ const saveContact = async (contactData) => {
         },
         replyTo: normalized.email,
       });
-
     } catch (emailError) {
-
       throw emailError;
     }
-
 
     try {
       const supportTicket = await Support.create({
@@ -138,9 +132,7 @@ const saveContact = async (contactData) => {
         message: normalized.message,
         status: 'open',
       });
-
     } catch (dbError) {
-
       throw dbError;
     }
 
@@ -149,7 +141,6 @@ const saveContact = async (contactData) => {
       message: 'Contact form submitted successfully',
     };
   } catch (error) {
-
     throw error;
   }
 };

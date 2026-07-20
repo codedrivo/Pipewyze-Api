@@ -42,7 +42,7 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ['admin', 'home-owner', 'apprentice','licensed-plumber'],
+      enum: ['admin', 'home-owner', 'apprentice', 'licensed-plumber'],
       default: 'home-owner',
     },
 
@@ -54,7 +54,6 @@ const userSchema = new mongoose.Schema(
       required: true,
     },
 
-  
     profileimageurl: {
       type: String,
       default: '',

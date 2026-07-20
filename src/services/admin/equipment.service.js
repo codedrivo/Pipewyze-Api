@@ -5,7 +5,10 @@ const ApiError = require('../../helpers/apiErrorConverter');
 const getEquipmentByPlumber = async (plumberId) => {
   const plumber = await User.findById(plumberId);
   if (!plumber || plumber.role !== 'licensed-plumber') {
-    throw new ApiError('Plumber not found or user is not a licensed plumber', 404);
+    throw new ApiError(
+      'Plumber not found or user is not a licensed plumber',
+      404,
+    );
   }
   const equipment = await Equipment.find({ plumberId }).sort({ createdAt: -1 });
   return equipment;
@@ -14,7 +17,10 @@ const getEquipmentByPlumber = async (plumberId) => {
 const createEquipment = async (data) => {
   const plumber = await User.findById(data.plumberId);
   if (!plumber || plumber.role !== 'licensed-plumber') {
-    throw new ApiError('Plumber not found or user is not a licensed plumber', 404);
+    throw new ApiError(
+      'Plumber not found or user is not a licensed plumber',
+      404,
+    );
   }
   const equipment = await Equipment.create(data);
   return equipment;

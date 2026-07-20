@@ -19,7 +19,10 @@ const getApprenticeById = async (id) => {
 
 const updateApprenticeById = async (id, updateBody) => {
   const apprentice = await getApprenticeById(id);
-  if (updateBody.email && (await User.findOne({ email: updateBody.email, _id: { $ne: id } }))) {
+  if (
+    updateBody.email &&
+    (await User.findOne({ email: updateBody.email, _id: { $ne: id } }))
+  ) {
     throw new ApiError('Email already taken', 400);
   }
   Object.assign(apprentice, updateBody);

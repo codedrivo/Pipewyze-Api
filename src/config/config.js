@@ -68,7 +68,8 @@ module.exports = {
     smtp: {
       host: envVars.SMTP_HOST || 'smtp.gmail.com',
       port: envVars.SMTP_PORT || 587,
-      secure: envVars.SMTP_SECURE === 'true' || envVars.SMTP_SECURE === true || false,
+      secure:
+        envVars.SMTP_SECURE === 'true' || envVars.SMTP_SECURE === true || false,
       user: envVars.EMAIL_USER || envVars.APPEMAIL,
       pass: envVars.EMAIL_PASS || envVars.APPPASSWORD,
     },

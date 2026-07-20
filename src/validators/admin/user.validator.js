@@ -23,7 +23,9 @@ const addUser = Joi.object({
   fullName: Joi.string().required(),
   email: email.required(),
   phone: Joi.string().required(),
-  role: Joi.string().valid('admin', 'home-owner', 'apprentice', 'licensed-plumber').required(),
+  role: Joi.string()
+    .valid('admin', 'home-owner', 'apprentice', 'licensed-plumber')
+    .required(),
   password: Joi.string().required(),
   profileimageurl: Joi.optional(),
 });
@@ -31,7 +33,9 @@ const addUser = Joi.object({
 const updateuser = Joi.object({
   fullName: Joi.string().required(),
   phone: Joi.string().required(),
-  role: Joi.string().valid('admin', 'home-owner', 'apprentice', 'licensed-plumber').required(),
+  role: Joi.string()
+    .valid('admin', 'home-owner', 'apprentice', 'licensed-plumber')
+    .required(),
   profileimageurl: Joi.optional(),
 });
 

@@ -4,8 +4,12 @@ const equipmentService = require('../../../services/admin/equipment.service');
 const ApiError = require('../../../helpers/apiErrorConverter');
 
 const createLicensedPlumber = catchAsync(async (req, res) => {
+  const data = { ...req.body };
+  if (req.file) {
+    data.profileimageurl = req.file.location || req.file.path;
+  }
   const licensedPlumber = await licensedPlumberService.createLicensedPlumber(
-    req.body,
+    data,
   );
   res.status(201).send(licensedPlumber);
 });
@@ -18,11 +22,12 @@ const getLicensedPlumber = catchAsync(async (req, res) => {
 });
 
 const updateLicensedPlumber = catchAsync(async (req, res) => {
+  const data = { ...req.body };
+  if (req.file) {
+    data.profileimageurl = req.file.location || req.file.path;
+  }
   const licensedPlumber =
-    await licensedPlumberService.updateLicensedPlumberById(
-      req.params.id,
-      req.body,
-    );
+    await licensedPlumberService.updateLicensedPlumberById(req.params.id, data);
   res.send(licensedPlumber);
 });
 
@@ -72,7 +77,10 @@ const updateLicensedPlumberEquipment = catchAsync(async (req, res) => {
   if (req.file && req.file.location) {
     data.image = req.file.location;
   }
-  const equipment = await equipmentService.updateEquipment(req.params.equipmentId, data);
+  const equipment = await equipmentService.updateEquipment(
+    req.params.equipmentId,
+    data,
+  );
   res.status(200).json({
     status: 200,
     message: 'Equipment updated successfully',

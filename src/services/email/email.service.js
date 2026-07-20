@@ -11,7 +11,9 @@ const getTransporter = () => {
   const { host, port, secure, user, pass } = config.email.smtp;
 
   if (!user || !pass) {
-    console.warn('[EMAIL] SMTP credentials are not configured. Falling back to console log email sending.');
+    console.warn(
+      '[EMAIL] SMTP credentials are not configured. Falling back to console log email sending.',
+    );
     return null;
   }
 
@@ -30,10 +32,15 @@ const getTransporter = () => {
 
 const sendEmail = async (to, subject, text, html) => {
   const mailTransporter = getTransporter();
-  const from = config.email.from || (config.email.smtp && config.email.smtp.user);
+  const from =
+    config.email.from || (config.email.smtp && config.email.smtp.user);
 
   if (!mailTransporter || !from) {
-    console.log(`[DEV EMAIL LOG] (No SMTP Config) To: ${to} | Subject: ${subject} | Body: ${text || html}`);
+    console.log(
+      `[DEV EMAIL LOG] (No SMTP Config) To: ${to} | Subject: ${subject} | Body: ${
+        text || html
+      }`,
+    );
     return true;
   }
 
@@ -52,7 +59,9 @@ const sendEmail = async (to, subject, text, html) => {
   } catch (error) {
     console.error(`[EMAIL ERROR] Failed to send email to ${to}:`, error);
     // fallback to console log so it doesn't crash the server or process
-    console.log(`[DEV EMAIL LOG] To: ${to} | Subject: ${subject} | Body: ${text || html}`);
+    console.log(
+      `[DEV EMAIL LOG] To: ${to} | Subject: ${subject} | Body: ${text || html}`,
+    );
     return false;
   }
 };

@@ -9,13 +9,27 @@ const validator = require('express-joi-validation').createValidator({
 
 router.use(auth('admin'));
 
-router.route('/')
-  .post(upload.single('image'), validator.body(validationSchema.createEssentialTool), controller.createEssentialTool)
+router
+  .route('/')
+  .post(
+    upload.single('image'),
+    validator.body(validationSchema.createEssentialTool),
+    controller.createEssentialTool,
+  )
   .get(controller.getEssentialTools);
 
-router.route('/:id')
+router
+  .route('/:id')
   .get(validator.params(validationSchema.singleId), controller.getEssentialTool)
-  .patch(upload.single('image'), validator.params(validationSchema.singleId), validator.body(validationSchema.updateEssentialTool), controller.updateEssentialTool)
-  .delete(validator.params(validationSchema.singleId), controller.deleteEssentialTool);
+  .patch(
+    upload.single('image'),
+    validator.params(validationSchema.singleId),
+    validator.body(validationSchema.updateEssentialTool),
+    controller.updateEssentialTool,
+  )
+  .delete(
+    validator.params(validationSchema.singleId),
+    controller.deleteEssentialTool,
+  );
 
 module.exports = router;

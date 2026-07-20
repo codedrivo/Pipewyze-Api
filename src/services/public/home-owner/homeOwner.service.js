@@ -19,7 +19,10 @@ const getHomeOwnerById = async (id) => {
 
 const updateHomeOwnerById = async (id, updateBody) => {
   const homeOwner = await getHomeOwnerById(id);
-  if (updateBody.email && (await User.findOne({ email: updateBody.email, _id: { $ne: id } }))) {
+  if (
+    updateBody.email &&
+    (await User.findOne({ email: updateBody.email, _id: { $ne: id } }))
+  ) {
     throw new ApiError('Email already taken', 400);
   }
   Object.assign(homeOwner, updateBody);
