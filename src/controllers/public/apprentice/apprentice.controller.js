@@ -12,7 +12,10 @@ const getApprentice = catchAsync(async (req, res) => {
 });
 
 const updateApprentice = catchAsync(async (req, res) => {
-  const apprentice = await apprenticeService.updateApprenticeById(req.params.id, req.body);
+  const apprentice = await apprenticeService.updateApprenticeById(
+    req.params.id,
+    req.body,
+  );
   res.send(apprentice);
 });
 

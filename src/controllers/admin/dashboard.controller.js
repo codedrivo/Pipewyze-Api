@@ -12,12 +12,12 @@ const getDashboardData = catchAsync(async (req, res, next) => {
       totalSupportRequests: 0,
       totalReports: 0,
       ordersChart: {
-        labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
-        data: [0, 0, 0, 0, 0, 0]
+        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+        data: [0, 0, 0, 0, 0, 0],
       },
       revenueChart: {
-        labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
-        data: [0, 0, 0, 0, 0, 0]
+        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+        data: [0, 0, 0, 0, 0, 0],
       },
     },
   });
