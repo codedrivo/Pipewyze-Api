@@ -40,10 +40,14 @@ const getLicensedPlumbers = catchAsync(async (req, res) => {
   const page = parseInt(req.query.page, 10) || 1;
   const limit = parseInt(req.query.limit, 10) || 10;
   const search = req.query.search || '';
+  const { latitude, longitude, radius } = req.query;
   const result = await licensedPlumberService.queryLicensedPlumbers(
     search,
     page,
     limit,
+    latitude,
+    longitude,
+    radius,
   );
   res.send(result);
 });
