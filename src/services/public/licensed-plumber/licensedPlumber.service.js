@@ -106,8 +106,33 @@ const queryLicensedPlumbers = async (
   searchQuery = '',
   page = 1,
   limit = 10,
+  latitude = null,
+  longitude = null,
+  radius = 10, // radius in miles
 ) => {
   const query = { role: 'licensed-plumber' };
+
+  if (latitude !== null && longitude !== null) {
+    const lat = parseFloat(latitude);
+    const lng = parseFloat(longitude);
+    const radMeters = parseFloat(radius) * 1609.34; // convert miles to meters
+
+    const nearbyProfiles = await LicensedPlumberProfile.find({
+      location: {
+        $near: {
+          $geometry: {
+            type: 'Point',
+            coordinates: [lng, lat],
+          },
+          $maxDistance: radMeters,
+        },
+      },
+    }).select('userId');
+
+    const nearbyUserIds = nearbyProfiles.map((p) => p.userId);
+    query._id = { $in: nearbyUserIds };
+  }
+
   if (searchQuery) {
     const sanitizedSearch = searchQuery.replace(/"/g, '');
     query.$or = [
@@ -132,6 +157,7 @@ const queryLicensedPlumbers = async (
         yearsOfService: profile ? profile.yearsOfService : '',
         serviceLocations: profile ? profile.serviceLocations : [],
         servicesOffered: profile ? profile.servicesOffered : [],
+        location: profile ? profile.location : null,
       };
     }),
   );

@@ -21,11 +21,24 @@ const licensedPlumberProfileSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    location: {
+      type: {
+        type: String,
+        enum: ['Point'],
+        default: 'Point',
+      },
+      coordinates: {
+        type: [Number],
+        default: [0, 0],
+      },
+    },
   },
   {
     timestamps: true,
   },
 );
+
+licensedPlumberProfileSchema.index({ location: '2dsphere' });
 
 licensedPlumberProfileSchema.plugin(toJSON);
 

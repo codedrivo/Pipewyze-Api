@@ -6,6 +6,12 @@ const equipmentSchema = new mongoose.Schema(
     plumberId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
+      required: false,
+      index: true,
+    },
+    ownerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
       required: true,
       index: true,
     },
@@ -29,6 +35,11 @@ const equipmentSchema = new mongoose.Schema(
       default: '',
     },
     model: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    serialNumber: {
       type: String,
       trim: true,
       default: '',
