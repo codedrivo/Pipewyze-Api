@@ -9,12 +9,14 @@ const adminSettingRoute = require('./admin/setting.route');
 const adminPageRoute = require('./admin/page.route');
 const adminEquipmentRoute = require('./admin/equipment.route');
 const adminEssentialToolRoute = require('./admin/essentialTool.route');
+const adminPlumbingCodeRoute = require('./admin/plumbingCode.route');
 const profileRoute = require('./profile/profile.route');
 
 const apprenticeRoute = require('./public/apprentice/apprentice.route');
 const homeOwnerRoute = require('./public/home-owner/homeOwner.route');
 const licensedPlumberRoute = require('./public/licensed-plumber/licensedPlumber.route');
 const essentialToolPublicRoute = require('./public/essential-tool/essentialTool.route');
+const plumbingCodePublicRoute = require('./public/plumbing-code/plumbingCode.route');
 
 // all routes
 router.use('/auth', authRouter);
@@ -28,6 +30,7 @@ router.use('/admin/setting', adminSettingRoute);
 router.use('/admin/page', adminPageRoute);
 router.use('/admin/equipment', adminEquipmentRoute);
 router.use('/admin/essential-tool', adminEssentialToolRoute);
+router.use('/admin/plumbing-code', adminPlumbingCodeRoute);
 
 router.use('/profile', profileRoute);
 
@@ -36,5 +39,6 @@ router.use('/public/apprentice', apprenticeRoute);
 router.use('/public/home-owner', homeOwnerRoute);
 router.use('/public/licensed-plumber', licensedPlumberRoute);
 router.use('/public/essential-tools', essentialToolPublicRoute);
+router.use('/public/plumbing-codes', plumbingCodePublicRoute);
 
 module.exports = router;

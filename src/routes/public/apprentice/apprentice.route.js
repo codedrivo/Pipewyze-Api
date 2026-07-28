@@ -16,7 +16,7 @@ router
   .get(auth('admin'), controller.getApprentices);
 
 router
-  .route('/:id([0-9a-fA-F]{24})')
+  .route('/:id')
   .get(auth(), verifyOwnerOrAdmin, controller.getApprentice)
   .put(auth(), verifyOwnerOrAdmin, controller.updateApprentice)
   .delete(auth(), verifyOwnerOrAdmin, controller.deleteApprentice);

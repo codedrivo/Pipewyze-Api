@@ -33,14 +33,14 @@ router.post(
 );
 
 router.patch(
-  '/equipment/:id([0-9a-fA-F]{24})',
+  '/equipment/:id',
   auth('home-owner'),
   upload.single('image'),
   equipmentController.updateMyEquipment,
 );
 
 router.delete(
-  '/equipment/:id([0-9a-fA-F]{24})',
+  '/equipment/:id',
   auth('home-owner'),
   equipmentController.deleteMyEquipment,
 );
@@ -51,7 +51,7 @@ router
   .get(auth('admin'), controller.getHomeOwners);
 
 router
-  .route('/:id([0-9a-fA-F]{24})')
+  .route('/:id')
   .get(auth(), verifyOwnerOrAdmin, controller.getHomeOwner)
   .put(auth(), verifyOwnerOrAdmin, controller.updateHomeOwner)
   .delete(auth(), verifyOwnerOrAdmin, controller.deleteHomeOwner);
