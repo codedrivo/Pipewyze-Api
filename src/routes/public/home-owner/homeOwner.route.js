@@ -4,6 +4,14 @@ const dashboardController = require('../../../controllers/public/home-owner/home
 const equipmentController = require('../../../controllers/public/home-owner/homeOwnerEquipment.controller');
 const auth = require('../../../middlewares/auth.middleware');
 const upload = require('../../../middlewares/multer.middleware');
+const ApiError = require('../../../helpers/apiErrorConverter');
+
+const verifyOwnerOrAdmin = (req, res, next) => {
+  if (req.user.role === 'admin' || req.user._id.toString() === req.params.id) {
+    return next();
+  }
+  return next(new ApiError('Permission Denied', 403));
+};
 
 router.get(
   '/dashboard',
@@ -25,14 +33,14 @@ router.post(
 );
 
 router.patch(
-  '/equipment/:id',
+  '/equipment/:id([0-9a-fA-F]{24})',
   auth('home-owner'),
   upload.single('image'),
   equipmentController.updateMyEquipment,
 );
 
 router.delete(
-  '/equipment/:id',
+  '/equipment/:id([0-9a-fA-F]{24})',
   auth('home-owner'),
   equipmentController.deleteMyEquipment,
 );
@@ -40,12 +48,12 @@ router.delete(
 router
   .route('/')
   .post(controller.createHomeOwner)
-  .get(controller.getHomeOwners);
+  .get(auth('admin'), controller.getHomeOwners);
 
 router
-  .route('/:id')
-  .get(controller.getHomeOwner)
-  .put(controller.updateHomeOwner)
-  .delete(controller.deleteHomeOwner);
+  .route('/:id([0-9a-fA-F]{24})')
+  .get(auth(), verifyOwnerOrAdmin, controller.getHomeOwner)
+  .put(auth(), verifyOwnerOrAdmin, controller.updateHomeOwner)
+  .delete(auth(), verifyOwnerOrAdmin, controller.deleteHomeOwner);
 
 module.exports = router;
