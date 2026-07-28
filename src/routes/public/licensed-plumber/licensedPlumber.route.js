@@ -4,9 +4,17 @@ const controller = require('../../../controllers/public/licensed-plumber/license
 const auth = require('../../../middlewares/auth.middleware');
 const upload = require('../../../middlewares/multer.middleware');
 const validationSchema = require('../../../validators/licensedPlumber.validator');
+const ApiError = require('../../../helpers/apiErrorConverter');
 const validator = require('express-joi-validation').createValidator({
   passError: true,
 });
+
+const verifyOwnerOrAdmin = (req, res, next) => {
+  if (req.user.role === 'admin' || req.user._id.toString() === req.params.id) {
+    return next();
+  }
+  return next(new ApiError('Permission Denied', 403));
+};
 
 const parsePlumberArrays = (req, res, next) => {
   if (
@@ -40,22 +48,24 @@ router
     validator.body(validationSchema.createLicensedPlumber),
     controller.createLicensedPlumber,
   )
-  .get(controller.getLicensedPlumbers);
+  .get(auth(), controller.getLicensedPlumbers);
 
 router
   .route('/:id')
-  .get(controller.getLicensedPlumber)
+  .get(auth(), controller.getLicensedPlumber)
   .put(
+    auth(),
+    verifyOwnerOrAdmin,
     upload.single('profileimageurl'),
     parsePlumberArrays,
     validator.body(validationSchema.updateLicensedPlumber),
     controller.updateLicensedPlumber,
   )
-  .delete(controller.deleteLicensedPlumber);
+  .delete(auth(), verifyOwnerOrAdmin, controller.deleteLicensedPlumber);
 
 router
   .route('/:id/equipment')
-  .get(controller.getLicensedPlumberEquipment)
+  .get(auth(), controller.getLicensedPlumberEquipment)
   .post(
     auth('licensed-plumber'),
     upload.single('image'),
