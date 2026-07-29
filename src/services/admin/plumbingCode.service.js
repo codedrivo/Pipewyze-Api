@@ -6,8 +6,15 @@ const createPlumbingCode = async (data) => {
   return code;
 };
 
-const getPlumbingCodes = async (filter = {}) => {
-  const codes = await PlumbingCode.find(filter).sort({ createdAt: -1 });
+const getPlumbingCodes = async (filter = {}, options = {}) => {
+  const limit = parseInt(options.limit, 10) || 10;
+  const page = parseInt(options.page, 10) || 1;
+  const skip = (page - 1) * limit;
+
+  const codes = await PlumbingCode.find(filter)
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit);
   return codes;
 };
 

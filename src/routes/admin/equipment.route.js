@@ -10,6 +10,11 @@ const validator = require('express-joi-validation').createValidator({
 router.use(auth(['admin', 'licensed-plumber']));
 
 router.get(
+  '/homeowners',
+  controller.getHomeOwnerEquipment,
+);
+
+router.get(
   '/plumber/:plumberId',
   validator.params(validationSchema.singlePlumberId),
   controller.getEquipment,

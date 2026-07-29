@@ -16,7 +16,6 @@ const plumbingCodeSchema = new mongoose.Schema(
     },
     category: {
       type: String,
-      enum: ['MUPC', 'IPC'],
       required: true,
     },
     description: {

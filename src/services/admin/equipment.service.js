@@ -45,9 +45,17 @@ const deleteEquipment = async (id) => {
   return equipment;
 };
 
+const getHomeOwnerEquipment = async () => {
+  const equipment = await Equipment.find({ ownerId: { $exists: true } })
+    .populate('ownerId', 'fullName email phone')
+    .sort({ createdAt: -1 });
+  return equipment;
+};
+
 module.exports = {
   getEquipmentByPlumber,
   createEquipment,
   updateEquipment,
   deleteEquipment,
+  getHomeOwnerEquipment,
 };

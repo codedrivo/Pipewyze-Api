@@ -40,9 +40,15 @@ const deleteEquipment = catchAsync(async (req, res) => {
   });
 });
 
+const getHomeOwnerEquipment = catchAsync(async (req, res) => {
+  const equipment = await service.getHomeOwnerEquipment();
+  res.status(200).send({ status: 200, equipment });
+});
+
 module.exports = {
   getEquipment,
   addEquipment,
   updateEquipment,
   deleteEquipment,
+  getHomeOwnerEquipment,
 };
