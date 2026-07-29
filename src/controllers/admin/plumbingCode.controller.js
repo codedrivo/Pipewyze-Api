@@ -11,9 +11,20 @@ const createPlumbingCode = catchAsync(async (req, res) => {
 });
 
 const getPlumbingCodes = catchAsync(async (req, res) => {
-  const category = req.query.category;
-  const filter = category ? { category } : {};
-  const codes = await service.getPlumbingCodes(filter);
+  const { category, search, limit, page } = req.query;
+  const filter = {};
+  if (category) {
+    filter.category = category;
+  }
+  if (search) {
+    filter.$or = [
+      { code: { $regex: search, $options: 'i' } },
+      { title: { $regex: search, $options: 'i' } },
+      { description: { $regex: search, $options: 'i' } },
+      { plainLanguageInterpretation: { $regex: search, $options: 'i' } },
+    ];
+  }
+  const codes = await service.getPlumbingCodes(filter, { limit, page });
   res.status(200).json({
     status: 200,
     codes,
