@@ -2,6 +2,7 @@ const router = require('express').Router();
 const controller = require('../../../controllers/public/home-owner/homeOwner.controller');
 const dashboardController = require('../../../controllers/public/home-owner/homeOwnerDashboard.controller');
 const equipmentController = require('../../../controllers/public/home-owner/homeOwnerEquipment.controller');
+const equipmentCategoryController = require('../../../controllers/admin/equipmentCategory.controller');
 const auth = require('../../../middlewares/auth.middleware');
 const upload = require('../../../middlewares/multer.middleware');
 const ApiError = require('../../../helpers/apiErrorConverter');
@@ -17,6 +18,12 @@ router.get(
   '/dashboard',
   auth('home-owner'),
   dashboardController.getDashboardSummary,
+);
+
+router.get(
+  '/equipment-categories',
+  auth('home-owner'),
+  equipmentCategoryController.getCategories,
 );
 
 router.get(
