@@ -17,16 +17,6 @@ const equipmentSchema = new mongoose.Schema(
     },
     category: {
       type: String,
-      enum: [
-        'Water Heaters',
-        'Pressure Reducing Valves',
-        'Shut-off Valves',
-        'Water Softeners',
-        'Whole-house Filters',
-        'Toilets',
-        'Faucets',
-        'Showerheads',
-      ],
       required: true,
     },
     brand: {
