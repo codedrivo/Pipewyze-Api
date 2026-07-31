@@ -18,7 +18,7 @@ const updateCategory = async (id, data) => {
   if (!category) {
     throw new ApiError('Category not found', 404);
   }
-  
+
   if (data.name && data.name !== category.name) {
     const exists = await EquipmentCategory.findOne({ name: data.name });
     if (exists) {

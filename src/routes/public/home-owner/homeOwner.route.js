@@ -21,6 +21,12 @@ router.get(
 );
 
 router.get(
+  '/recent-reminder',
+  auth('home-owner'),
+  dashboardController.getRecentReminder,
+);
+
+router.get(
   '/equipment-categories',
   auth('home-owner'),
   equipmentCategoryController.getCategories,

@@ -29,7 +29,11 @@ router
 
 router
   .route('/:id')
-  .patch(validator.params(paramIdSchema), validator.body(categoryUpdateSchema), controller.updateCategory)
+  .patch(
+    validator.params(paramIdSchema),
+    validator.body(categoryUpdateSchema),
+    controller.updateCategory,
+  )
   .delete(validator.params(paramIdSchema), controller.deleteCategory);
 
 module.exports = router;
