@@ -21,8 +21,24 @@ const paramIdSchema = Joi.object({
 });
 
 router.get('/', auth(), controller.getCategories);
-router.post('/', auth('admin'), validator.body(categorySchema), controller.createCategory);
-router.patch('/:id', auth('admin'), validator.params(paramIdSchema), validator.body(categoryUpdateSchema), controller.updateCategory);
-router.delete('/:id', auth('admin'), validator.params(paramIdSchema), controller.deleteCategory);
+router.post(
+  '/',
+  auth('admin'),
+  validator.body(categorySchema),
+  controller.createCategory,
+);
+router.patch(
+  '/:id',
+  auth('admin'),
+  validator.params(paramIdSchema),
+  validator.body(categoryUpdateSchema),
+  controller.updateCategory,
+);
+router.delete(
+  '/:id',
+  auth('admin'),
+  validator.params(paramIdSchema),
+  controller.deleteCategory,
+);
 
 module.exports = router;

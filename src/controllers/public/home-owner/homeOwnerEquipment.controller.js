@@ -3,7 +3,9 @@ const Equipment = require('../../../models/equipment.model');
 const ApiError = require('../../../helpers/apiErrorConverter');
 
 const getMyEquipment = catchAsync(async (req, res) => {
-  const equipment = await Equipment.find({ ownerId: req.user._id }).sort({ createdAt: -1 });
+  const equipment = await Equipment.find({ ownerId: req.user._id }).sort({
+    createdAt: -1,
+  });
   res.status(200).json({ status: 200, equipment });
 });
 
@@ -21,7 +23,10 @@ const addMyEquipment = catchAsync(async (req, res) => {
 });
 
 const updateMyEquipment = catchAsync(async (req, res) => {
-  let equipment = await Equipment.findOne({ _id: req.params.id, ownerId: req.user._id });
+  let equipment = await Equipment.findOne({
+    _id: req.params.id,
+    ownerId: req.user._id,
+  });
   if (!equipment) {
     throw new ApiError('Equipment not found or access denied', 404);
   }
@@ -42,7 +47,10 @@ const updateMyEquipment = catchAsync(async (req, res) => {
 });
 
 const deleteMyEquipment = catchAsync(async (req, res) => {
-  const equipment = await Equipment.findOne({ _id: req.params.id, ownerId: req.user._id });
+  const equipment = await Equipment.findOne({
+    _id: req.params.id,
+    ownerId: req.user._id,
+  });
   if (!equipment) {
     throw new ApiError('Equipment not found or access denied', 404);
   }

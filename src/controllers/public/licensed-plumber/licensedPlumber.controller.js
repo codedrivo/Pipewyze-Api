@@ -2,6 +2,7 @@ const catchAsync = require('../../../helpers/asyncErrorHandler');
 const licensedPlumberService = require('../../../services/public/licensed-plumber/licensedPlumber.service');
 const equipmentService = require('../../../services/admin/equipment.service');
 const ApiError = require('../../../helpers/apiErrorConverter');
+const Equipment = require('../../../models/equipment.model');
 
 const createLicensedPlumber = catchAsync(async (req, res) => {
   const data = { ...req.body };
