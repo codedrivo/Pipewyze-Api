@@ -15,6 +15,14 @@ router
   .post(controller.createApprentice)
   .get(auth('admin'), controller.getApprentices);
 
+router.get('/maintenance-guides', auth(), controller.getMaintenanceGuides);
+
+router.get(
+  '/maintenance-guides/:guideId',
+  auth(),
+  controller.getMaintenanceGuideById,
+);
+
 router
   .route('/:id')
   .get(auth(), verifyOwnerOrAdmin, controller.getApprentice)

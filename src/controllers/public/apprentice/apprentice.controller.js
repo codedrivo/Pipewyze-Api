@@ -1,5 +1,7 @@
 const catchAsync = require('../../../helpers/asyncErrorHandler');
 const apprenticeService = require('../../../services/public/apprentice/apprentice.service');
+const MaintenanceGuide = require('../../../models/maintenanceGuide.model');
+const ApiError = require('../../../helpers/apiErrorConverter');
 
 const createApprentice = catchAsync(async (req, res) => {
   const apprentice = await apprenticeService.createApprentice(req.body);
@@ -32,10 +34,32 @@ const getApprentices = catchAsync(async (req, res) => {
   res.send(result);
 });
 
+const getMaintenanceGuides = catchAsync(async (req, res) => {
+  const search = req.query.search || '';
+  const query = {};
+  if (search) {
+    query.title = { $regex: search, $options: 'i' };
+  }
+  const guides = await MaintenanceGuide.find(query);
+  res.status(200).send({ status: 200, guides });
+});
+
+const getMaintenanceGuideById = catchAsync(async (req, res) => {
+  const guide = await MaintenanceGuide.findById(req.params.guideId)
+    .populate('requiredTools')
+    .populate('relatedCodes');
+  if (!guide) {
+    throw new ApiError('Maintenance guide not found', 404);
+  }
+  res.status(200).send({ status: 200, guide });
+});
+
 module.exports = {
   createApprentice,
   getApprentice,
   updateApprentice,
   deleteApprentice,
   getApprentices,
+  getMaintenanceGuides,
+  getMaintenanceGuideById,
 };
