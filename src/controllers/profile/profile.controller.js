@@ -1,6 +1,7 @@
 const catchAsync = require('../../helpers/asyncErrorHandler');
 
 const ApiError = require('../../helpers/apiErrorConverter');
+const service = require('../../services/auth/auth.service');
 
 // Delete account
 const deleteAccount = catchAsync(async (req, res, next) => {
@@ -48,6 +49,23 @@ const getProfile = catchAsync(async (req, res, next) => {
   const userData = req.user.toJSON ? req.user.toJSON() : { ...req.user };
   delete userData.password;
 
+  if (userData.role === 'licensed-plumber') {
+    const plumberService = require('../../services/public/licensed-plumber/licensedPlumber.service');
+    try {
+      const plumberData = await plumberService.getLicensedPlumberById(req.user._id);
+      delete plumberData.password;
+      res.status(200).send({
+        message: 'Profile retrieved successfully',
+        data: {
+          user: plumberData,
+        },
+      });
+      return;
+    } catch (err) {
+      // Fallback if profile not found
+    }
+  }
+
   res.status(200).send({
     message: 'Profile retrieved successfully',
     data: {
@@ -83,7 +101,7 @@ const deepParseJSON = (data) => {
 };
 
 const updateProfile = catchAsync(async (req, res) => {
-  const { fullName, phone } = req.body;
+  let { fullName, phone, yearsOfService, serviceLocations, servicesOffered } = req.body;
 
   const updateData = {
     ...(fullName && { fullName }),
@@ -106,7 +124,26 @@ const updateProfile = catchAsync(async (req, res) => {
     updateData.profileimageurl = req.file.location || req.file.path;
   }
 
-  const user = await service.updateUser(req.user._id, updateData);
+  let user = await service.updateUser(req.user._id, updateData);
+
+  if (req.user.role === 'licensed-plumber') {
+    const plumberService = require('../../services/public/licensed-plumber/licensedPlumber.service');
+    if (serviceLocations) {
+      serviceLocations = deepParseJSON(serviceLocations);
+    }
+    if (servicesOffered) {
+      servicesOffered = deepParseJSON(servicesOffered);
+    }
+    const plumberUpdateBody = {
+      ...updateData,
+      ...(yearsOfService !== undefined && { yearsOfService }),
+      ...(serviceLocations !== undefined && { serviceLocations }),
+      ...(servicesOffered !== undefined && { servicesOffered }),
+    };
+    const updatedPlumber = await plumberService.updateLicensedPlumberById(req.user._id, plumberUpdateBody);
+    delete updatedPlumber.password;
+    user = updatedPlumber;
+  }
 
   res.status(200).json({
     success: true,
