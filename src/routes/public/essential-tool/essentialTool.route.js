@@ -15,4 +15,16 @@ router.get(
   }),
 );
 
+router.get(
+  '/:id',
+  auth(),
+  catchAsync(async (req, res) => {
+    const tool = await service.getEssentialToolById(req.params.id);
+    res.status(200).json({
+      status: 200,
+      tool,
+    });
+  }),
+);
+
 module.exports = router;

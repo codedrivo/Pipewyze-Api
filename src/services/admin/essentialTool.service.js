@@ -1,7 +1,25 @@
 const EssentialTool = require('../../models/essentialTool.model');
 const ApiError = require('../../helpers/apiErrorConverter');
 
+const parseArrayFields = (data) => {
+  const fields = ['bestUsedFor', 'howToUse', 'safetyTips'];
+  fields.forEach((field) => {
+    if (typeof data[field] === 'string') {
+      try {
+        data[field] = JSON.parse(data[field]);
+      } catch (e) {
+        if (data[field].trim() === '') {
+          data[field] = [];
+        } else {
+          data[field] = data[field].split(',').map((s) => s.trim()).filter(Boolean);
+        }
+      }
+    }
+  });
+};
+
 const createEssentialTool = async (data) => {
+  parseArrayFields(data);
   const tool = await EssentialTool.create(data);
   return tool;
 };
@@ -20,6 +38,7 @@ const getEssentialToolById = async (id) => {
 };
 
 const updateEssentialToolById = async (id, data) => {
+  parseArrayFields(data);
   const tool = await getEssentialToolById(id);
   Object.assign(tool, data);
   await tool.save();

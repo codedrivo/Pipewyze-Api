@@ -12,6 +12,7 @@ const adminEquipmentCategoryRoute = require('./admin/equipmentCategory.route');
 const adminEssentialToolRoute = require('./admin/essentialTool.route');
 const adminPlumbingCodeRoute = require('./admin/plumbingCode.route');
 const adminPlumbingCodeCategoryRoute = require('./admin/plumbingCodeCategory.route');
+const adminMaintenanceGuideRoute = require('./admin/maintenanceGuide.route');
 const profileRoute = require('./profile/profile.route');
 
 const apprenticeRoute = require('./public/apprentice/apprentice.route');
@@ -35,6 +36,7 @@ router.use('/admin/equipment-category', adminEquipmentCategoryRoute);
 router.use('/admin/essential-tool', adminEssentialToolRoute);
 router.use('/admin/plumbing-code', adminPlumbingCodeRoute);
 router.use('/admin/plumbing-code-category', adminPlumbingCodeCategoryRoute);
+router.use('/admin/maintenance-guide', adminMaintenanceGuideRoute);
 
 router.use('/profile', profileRoute);
 

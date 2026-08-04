@@ -6,6 +6,11 @@ const createEssentialTool = Joi.object({
   tag: Joi.string().allow('').optional(),
   recommendationLink: Joi.string().allow('').optional(),
   image: Joi.string().allow('').optional(),
+  purpose: Joi.string().allow('').optional(),
+  bestUsedFor: Joi.alternatives().try(Joi.array().items(Joi.string()), Joi.string().allow('')).optional(),
+  howToUse: Joi.alternatives().try(Joi.array().items(Joi.string()), Joi.string().allow('')).optional(),
+  safetyTips: Joi.alternatives().try(Joi.array().items(Joi.string()), Joi.string().allow('')).optional(),
+  recommendedVideo: Joi.string().allow('').optional(),
 });
 
 const updateEssentialTool = Joi.object({
@@ -14,6 +19,11 @@ const updateEssentialTool = Joi.object({
   tag: Joi.string().allow('').optional(),
   recommendationLink: Joi.string().allow('').optional(),
   image: Joi.string().allow('').optional(),
+  purpose: Joi.string().allow('').optional(),
+  bestUsedFor: Joi.alternatives().try(Joi.array().items(Joi.string()), Joi.string().allow('')).optional(),
+  howToUse: Joi.alternatives().try(Joi.array().items(Joi.string()), Joi.string().allow('')).optional(),
+  safetyTips: Joi.alternatives().try(Joi.array().items(Joi.string()), Joi.string().allow('')).optional(),
+  recommendedVideo: Joi.string().allow('').optional(),
 });
 
 const singleId = Joi.object({
