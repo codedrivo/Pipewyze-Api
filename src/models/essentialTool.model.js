@@ -27,6 +27,34 @@ const essentialToolSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    purpose: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    bestUsedFor: [
+      {
+        type: String,
+        trim: true,
+      },
+    ],
+    howToUse: [
+      {
+        type: String,
+        trim: true,
+      },
+    ],
+    safetyTips: [
+      {
+        type: String,
+        trim: true,
+      },
+    ],
+    recommendedVideo: {
+      type: String,
+      trim: true,
+      default: '',
+    },
   },
   {
     timestamps: true,
