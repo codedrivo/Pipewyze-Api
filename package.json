@@ -19,8 +19,8 @@
   },
   "lint-staged": {
     "src/**/*.js": [
-      "npm run commit",
-      "git add ."
+      "eslint --fix",
+      "prettier --write"
     ]
   },
   "author": {
