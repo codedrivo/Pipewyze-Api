@@ -20,6 +20,8 @@ const homeOwnerRoute = require('./public/home-owner/homeOwner.route');
 const licensedPlumberRoute = require('./public/licensed-plumber/licensedPlumber.route');
 const essentialToolPublicRoute = require('./public/essential-tool/essentialTool.route');
 const plumbingCodePublicRoute = require('./public/plumbing-code/plumbingCode.route');
+const savedResourceRoute = require('./public/saved-resource/savedResource.route');
+const toolsLibraryRoute = require('./public/tools-library/toolsLibrary.route');
 
 // all routes
 router.use('/auth', authRouter);
@@ -46,5 +48,7 @@ router.use('/public/home-owner', homeOwnerRoute);
 router.use('/public/licensed-plumber', licensedPlumberRoute);
 router.use('/public/essential-tools', essentialToolPublicRoute);
 router.use('/public/plumbing-codes', plumbingCodePublicRoute);
+router.use('/public/saved-resources', savedResourceRoute);
+router.use('/public/tools-library', toolsLibraryRoute);
 
 module.exports = router;
