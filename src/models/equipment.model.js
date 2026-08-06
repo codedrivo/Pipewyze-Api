@@ -52,6 +52,6 @@ const equipmentSchema = new mongoose.Schema(
 
 equipmentSchema.plugin(toJSON);
 
-const Equipment = mongoose.model('Equipment', equipmentSchema);
+const Equipment = mongoose.model('Equipment', equipmentSchema, 'equipment');
 
 module.exports = Equipment;
