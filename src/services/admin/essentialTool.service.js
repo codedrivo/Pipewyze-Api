@@ -11,7 +11,10 @@ const parseArrayFields = (data) => {
         if (data[field].trim() === '') {
           data[field] = [];
         } else {
-          data[field] = data[field].split(',').map((s) => s.trim()).filter(Boolean);
+          data[field] = data[field]
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean);
         }
       }
     }

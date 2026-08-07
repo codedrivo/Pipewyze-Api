@@ -13,9 +13,15 @@ const createMaintenanceGuide = Joi.object({
   expectedLife: Joi.string().allow('').optional(),
   difficulty: Joi.string().allow('').optional(),
   overview: Joi.string().allow('').optional(),
-  checklist: Joi.alternatives().try(Joi.array().items(checklistItem), Joi.string()).optional(),
-  requiredTools: Joi.alternatives().try(Joi.array().items(Joi.string().pattern(objectIdPattern)), Joi.string()).optional(),
-  relatedCodes: Joi.alternatives().try(Joi.array().items(Joi.string().pattern(objectIdPattern)), Joi.string()).optional(),
+  checklist: Joi.alternatives()
+    .try(Joi.array().items(checklistItem), Joi.string())
+    .optional(),
+  requiredTools: Joi.alternatives()
+    .try(Joi.array().items(Joi.string().pattern(objectIdPattern)), Joi.string())
+    .optional(),
+  relatedCodes: Joi.alternatives()
+    .try(Joi.array().items(Joi.string().pattern(objectIdPattern)), Joi.string())
+    .optional(),
   recommendedVideo: Joi.string().allow('').optional(),
   image: Joi.string().allow('').optional(),
 });
@@ -26,9 +32,15 @@ const updateMaintenanceGuide = Joi.object({
   expectedLife: Joi.string().allow('').optional(),
   difficulty: Joi.string().allow('').optional(),
   overview: Joi.string().allow('').optional(),
-  checklist: Joi.alternatives().try(Joi.array().items(checklistItem), Joi.string()).optional(),
-  requiredTools: Joi.alternatives().try(Joi.array().items(Joi.string().pattern(objectIdPattern)), Joi.string()).optional(),
-  relatedCodes: Joi.alternatives().try(Joi.array().items(Joi.string().pattern(objectIdPattern)), Joi.string()).optional(),
+  checklist: Joi.alternatives()
+    .try(Joi.array().items(checklistItem), Joi.string())
+    .optional(),
+  requiredTools: Joi.alternatives()
+    .try(Joi.array().items(Joi.string().pattern(objectIdPattern)), Joi.string())
+    .optional(),
+  relatedCodes: Joi.alternatives()
+    .try(Joi.array().items(Joi.string().pattern(objectIdPattern)), Joi.string())
+    .optional(),
   recommendedVideo: Joi.string().allow('').optional(),
   image: Joi.string().allow('').optional(),
 });

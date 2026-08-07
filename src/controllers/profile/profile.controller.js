@@ -52,7 +52,9 @@ const getProfile = catchAsync(async (req, res, next) => {
   if (userData.role === 'licensed-plumber') {
     const plumberService = require('../../services/public/licensed-plumber/licensedPlumber.service');
     try {
-      const plumberData = await plumberService.getLicensedPlumberById(req.user._id);
+      const plumberData = await plumberService.getLicensedPlumberById(
+        req.user._id,
+      );
       delete plumberData.password;
       res.status(200).send({
         message: 'Profile retrieved successfully',
@@ -101,7 +103,8 @@ const deepParseJSON = (data) => {
 };
 
 const updateProfile = catchAsync(async (req, res) => {
-  let { fullName, phone, yearsOfService, serviceLocations, servicesOffered } = req.body;
+  let { fullName, phone, yearsOfService, serviceLocations, servicesOffered } =
+    req.body;
 
   const updateData = {
     ...(fullName && { fullName }),
@@ -140,7 +143,10 @@ const updateProfile = catchAsync(async (req, res) => {
       ...(serviceLocations !== undefined && { serviceLocations }),
       ...(servicesOffered !== undefined && { servicesOffered }),
     };
-    const updatedPlumber = await plumberService.updateLicensedPlumberById(req.user._id, plumberUpdateBody);
+    const updatedPlumber = await plumberService.updateLicensedPlumberById(
+      req.user._id,
+      plumberUpdateBody,
+    );
     delete updatedPlumber.password;
     user = updatedPlumber;
   }
