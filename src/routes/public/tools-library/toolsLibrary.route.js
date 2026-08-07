@@ -18,9 +18,26 @@ router.get(
       ];
     }
     const tools = await EssentialTool.find(filter).sort({ name: 1 });
+    let toolsWithSaved = tools;
+    if (req.user) {
+      const SavedResource = require('../../../models/savedResource.model');
+      const savedResources = await SavedResource.find({
+        userId: req.user._id,
+        resourceType: 'EssentialTool',
+        resourceId: { $in: tools.map((t) => t._id) },
+      });
+      const savedResourceIds = new Set(
+        savedResources.map((sr) => sr.resourceId.toString()),
+      );
+      toolsWithSaved = tools.map((tool) => {
+        const toolJson = tool.toJSON ? tool.toJSON() : tool;
+        toolJson.isSaved = savedResourceIds.has(tool._id.toString());
+        return toolJson;
+      });
+    }
     res.status(200).json({
       status: 200,
-      tools,
+      tools: toolsWithSaved,
     });
   }),
 );
@@ -38,9 +55,19 @@ router.get(
       });
       return;
     }
+    let toolJson = tool.toJSON ? tool.toJSON() : tool;
+    if (req.user) {
+      const SavedResource = require('../../../models/savedResource.model');
+      const isSaved = await SavedResource.exists({
+        userId: req.user._id,
+        resourceType: 'EssentialTool',
+        resourceId: tool._id,
+      });
+      toolJson.isSaved = !!isSaved;
+    }
     res.status(200).json({
       status: 200,
-      tool,
+      tool: toolJson,
     });
   }),
 );

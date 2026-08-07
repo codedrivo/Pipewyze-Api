@@ -25,17 +25,44 @@ const getPlumbingCodes = catchAsync(async (req, res) => {
     ];
   }
   const codes = await service.getPlumbingCodes(filter, { limit, page });
+  let codesWithSaved = codes;
+  if (req.user) {
+    const SavedResource = require('../../models/savedResource.model');
+    const savedResources = await SavedResource.find({
+      userId: req.user._id,
+      resourceType: 'PlumbingCode',
+      resourceId: { $in: codes.map((c) => c._id) },
+    });
+    const savedResourceIds = new Set(
+      savedResources.map((sr) => sr.resourceId.toString()),
+    );
+    codesWithSaved = codes.map((code) => {
+      const codeJson = code.toJSON ? code.toJSON() : code;
+      codeJson.isSaved = savedResourceIds.has(code._id.toString());
+      return codeJson;
+    });
+  }
   res.status(200).json({
     status: 200,
-    codes,
+    codes: codesWithSaved,
   });
 });
 
 const getPlumbingCode = catchAsync(async (req, res) => {
   const code = await service.getPlumbingCodeById(req.params.id);
+  let codeJson = code.toJSON ? code.toJSON() : code;
+  if (req.user) {
+    const SavedResource = require('../../models/savedResource.model');
+    const isSaved = await SavedResource.exists({
+      userId: req.user._id,
+      resourceType: 'PlumbingCode',
+      resourceId: code._id,
+    });
+    codeJson.isSaved = !!isSaved;
+  }
   res.status(200).json({
     status: 200,
-    code,
+    code: codeJson,
   });
 });
 

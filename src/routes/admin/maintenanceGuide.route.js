@@ -20,13 +20,19 @@ router
 
 router
   .route('/:id')
-  .get(validator.params(validationSchema.singleId), controller.getMaintenanceGuide)
+  .get(
+    validator.params(validationSchema.singleId),
+    controller.getMaintenanceGuide,
+  )
   .patch(
     upload.single('image'),
     validator.params(validationSchema.singleId),
     validator.body(validationSchema.updateMaintenanceGuide),
     controller.updateMaintenanceGuide,
   )
-  .delete(validator.params(validationSchema.singleId), controller.deleteMaintenanceGuide);
+  .delete(
+    validator.params(validationSchema.singleId),
+    controller.deleteMaintenanceGuide,
+  );
 
 module.exports = router;

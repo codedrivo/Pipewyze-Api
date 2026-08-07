@@ -41,7 +41,24 @@ const getMaintenanceGuides = catchAsync(async (req, res) => {
     query.title = { $regex: search, $options: 'i' };
   }
   const guides = await MaintenanceGuide.find(query);
-  res.status(200).send({ status: 200, guides });
+  let guidesWithSaved = guides;
+  if (req.user) {
+    const SavedResource = require('../../../models/savedResource.model');
+    const savedResources = await SavedResource.find({
+      userId: req.user._id,
+      resourceType: 'MaintenanceGuide',
+      resourceId: { $in: guides.map((g) => g._id) },
+    });
+    const savedResourceIds = new Set(
+      savedResources.map((sr) => sr.resourceId.toString()),
+    );
+    guidesWithSaved = guides.map((guide) => {
+      const guideJson = guide.toJSON ? guide.toJSON() : guide;
+      guideJson.isSaved = savedResourceIds.has(guide._id.toString());
+      return guideJson;
+    });
+  }
+  res.status(200).send({ status: 200, guides: guidesWithSaved });
 });
 
 const getMaintenanceGuideById = catchAsync(async (req, res) => {
@@ -51,7 +68,17 @@ const getMaintenanceGuideById = catchAsync(async (req, res) => {
   if (!guide) {
     throw new ApiError('Maintenance guide not found', 404);
   }
-  res.status(200).send({ status: 200, guide });
+  let guideJson = guide.toJSON ? guide.toJSON() : guide;
+  if (req.user) {
+    const SavedResource = require('../../../models/savedResource.model');
+    const isSaved = await SavedResource.exists({
+      userId: req.user._id,
+      resourceType: 'MaintenanceGuide',
+      resourceId: guide._id,
+    });
+    guideJson.isSaved = !!isSaved;
+  }
+  res.status(200).send({ status: 200, guide: guideJson });
 });
 
 module.exports = {

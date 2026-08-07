@@ -19,7 +19,10 @@ const parseGuideFields = (data) => {
         if (data[field].trim() === '') {
           data[field] = [];
         } else {
-          data[field] = data[field].split(',').map((id) => id.trim()).filter(Boolean);
+          data[field] = data[field]
+            .split(',')
+            .map((id) => id.trim())
+            .filter(Boolean);
         }
       }
     }
