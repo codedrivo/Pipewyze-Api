@@ -5,6 +5,7 @@ const objectIdPattern = /^[0-9a-fA-F]{24}$/;
 const checklistItem = Joi.object({
   task: Joi.string().required(),
   frequency: Joi.string().required(),
+  checked: Joi.boolean().default(false).optional(),
 });
 
 const createMaintenanceGuide = Joi.object({
