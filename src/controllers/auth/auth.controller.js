@@ -117,7 +117,7 @@ const verify = catchAsync(async (req, res, next) => {
       throw new ApiError('User not found', 404);
     }
 
-    await user.save();
+    await user.save({ validateBeforeSave: false });
   }
   res.status(200).send({
     message: 'OTP verified successfully',

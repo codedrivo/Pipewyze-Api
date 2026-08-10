@@ -1,8 +1,6 @@
 const Joi = require('joi');
 const { email, phone } = require('./common.validator');
 
-
-
 const password = (value, helpers) => {
   if (!/^(?=.*[a-zA-Z])(?=.*[0-9]).{8,}$/.test(value)) {
     return helpers.message(

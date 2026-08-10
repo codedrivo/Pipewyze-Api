@@ -65,7 +65,9 @@ const getPlumbingCode = catchAsync(async (req, res) => {
   let codeJson = code.toJSON ? code.toJSON() : code;
 
   const PlumbingCodeCategory = require('../../models/plumbingCodeCategory.model');
-  const categoryDoc = await PlumbingCodeCategory.findOne({ name: code.category });
+  const categoryDoc = await PlumbingCodeCategory.findOne({
+    name: code.category,
+  });
   codeJson.categoryFullName = categoryDoc ? categoryDoc.fullName : '';
 
   if (req.user) {
