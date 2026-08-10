@@ -1,5 +1,5 @@
 const Joi = require('joi');
-const { email } = require('../common.validator');
+const { email, phone } = require('../common.validator');
 
 const password = (value, helpers) => {
   if (
@@ -22,7 +22,7 @@ const pagination = Joi.object({
 const addUser = Joi.object({
   fullName: Joi.string().required(),
   email: email.required(),
-  phone: Joi.string().required(),
+  phone: phone.required(),
   role: Joi.string()
     .valid('admin', 'home-owner', 'apprentice', 'licensed-plumber')
     .required(),
@@ -32,7 +32,7 @@ const addUser = Joi.object({
 
 const updateuser = Joi.object({
   fullName: Joi.string().required(),
-  phone: Joi.string().required(),
+  phone: phone.required(),
   role: Joi.string()
     .valid('admin', 'home-owner', 'apprentice', 'licensed-plumber')
     .required(),

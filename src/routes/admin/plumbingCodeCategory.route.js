@@ -10,11 +10,13 @@ router.use(auth('admin'));
 
 const categorySchema = Joi.object({
   name: Joi.string().required(),
+  fullName: Joi.string().required(),
   description: Joi.string().allow('', null).optional(),
 });
 
 const categoryUpdateSchema = Joi.object({
   name: Joi.string().optional(),
+  fullName: Joi.string().optional(),
   description: Joi.string().allow('', null).optional(),
 });
 
