@@ -1,4 +1,5 @@
 const Joi = require('joi');
+const { phone } = require('./common.validator');
 
 const password = (value, helpers) => {
   if (
@@ -47,7 +48,7 @@ const singleId = Joi.object({
 const updateProfile = Joi.object({
   firstName: Joi.string(),
   lastName: Joi.string(),
-  phone: Joi.string(),
+  phone: phone,
 });
 
 module.exports = {

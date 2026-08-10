@@ -1,5 +1,5 @@
 const Joi = require('joi');
-const { email } = require('./common.validator');
+const { email, phone } = require('./common.validator');
 const password = (value, helpers) => {
   if (!/^(?=.*[a-zA-Z])(?=.*[0-9]).{8,}$/.test(value)) {
     return helpers.message(
@@ -19,7 +19,7 @@ const notifyAdmin = Joi.object({
   /* CONTACT */
   email: email.required(),
   emailVerified: Joi.boolean().default(false),
-  phone: Joi.string().required(),
+  phone: phone.required(),
   phoneVerified: Joi.boolean().default(false),
   /* AUTH */
   password: Joi.string().required().custom(password),
@@ -35,7 +35,7 @@ const notifyAdmin = Joi.object({
 const register = Joi.object({
   fullName: Joi.string().required(),
   email: email.required(),
-  phone: Joi.string().required(),
+  phone: phone.required(),
   password: Joi.string().required().custom(password),
   role: Joi.string()
     .valid('home-owner', 'apprentice', 'licensed-plumber')
@@ -61,7 +61,7 @@ const forgot = Joi.object({
 
 const reset = Joi.object({
   email: email,
-  phone: Joi.string(),
+  phone: phone,
   otp: Joi.string().max(6).min(6).required(),
   newPassword: Joi.string().required(),
 }).xor('email', 'phone');
@@ -74,7 +74,7 @@ const resetAdmin = Joi.object({
 
 const verify = Joi.object({
   email,
-  phone: Joi.string().pattern(/^[0-9]{10}$/),
+  phone: phone,
   otp: Joi.string().length(6).required(),
 })
   .xor('email', 'phone') // only one allowed

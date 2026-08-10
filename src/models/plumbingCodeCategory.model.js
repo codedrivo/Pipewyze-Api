@@ -9,6 +9,11 @@ const plumbingCodeCategorySchema = new mongoose.Schema(
       trim: true,
       unique: true,
     },
+    fullName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
     description: {
       type: String,
       trim: true,

@@ -32,11 +32,8 @@ const userSchema = new mongoose.Schema(
       unique: true,
       sparse: true,
       validate(value) {
-        if (
-          value &&
-          !validator.isMobilePhone(value, 'any', { strictMode: false })
-        ) {
-          throw new ApiError('Invalid phone number', 400);
+        if (value && !/^[0-9]{10}$/.test(value)) {
+          throw new ApiError('Phone number must be exactly 10 digits', 400);
         }
       },
     },

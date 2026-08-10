@@ -50,7 +50,7 @@ const login = catchAsync(async (req, res, next) => {
 const forgotPassword = catchAsync(async (req, res, next) => {
   const { email } = req.body;
   const user = await User.findOne({ email });
-  if (!user) {
+  if (!user || user.role === 'admin') {
     return res.status(404).send({
       message: 'No account found with this email address',
     });

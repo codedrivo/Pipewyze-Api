@@ -20,7 +20,7 @@ const adminLogin = catchAsync(async (req, res, next) => {
 // Forgot password
 const forgotPassword = catchAsync(async (req, res, next) => {
   const user = await service.findUserByEmail(req.body.email);
-  if (!user) {
+  if (!user || user.role !== 'admin') {
     throw new ApiError('User Not Found', 404);
   }
   await otp.sendEmailOTP(
