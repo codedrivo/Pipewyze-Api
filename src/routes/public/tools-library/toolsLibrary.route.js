@@ -23,7 +23,7 @@ router.get(
       const SavedResource = require('../../../models/savedResource.model');
       const savedResources = await SavedResource.find({
         userId: req.user._id,
-        resourceType: 'EssentialTool',
+        resourceType: { $in: ['EssentialTool', 'LibraryTools'] },
         resourceId: { $in: tools.map((t) => t._id) },
       });
       const savedResourceIds = new Set(
@@ -60,7 +60,7 @@ router.get(
       const SavedResource = require('../../../models/savedResource.model');
       const isSaved = await SavedResource.exists({
         userId: req.user._id,
-        resourceType: 'EssentialTool',
+        resourceType: { $in: ['EssentialTool', 'LibraryTools'] },
         resourceId: tool._id,
       });
       toolJson.isSaved = !!isSaved;

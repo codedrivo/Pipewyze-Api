@@ -2,8 +2,24 @@ const catchAsync = require('../../helpers/asyncErrorHandler');
 const savedResourceService = require('../../services/public/savedResource.service');
 
 const saveResource = catchAsync(async (req, res) => {
-  const { resourceId, resourceType } = req.body;
+  const { resourceId, resourceType, isSaved } = req.body;
   const userId = req.user._id;
+
+  if (isSaved === false) {
+    try {
+      await savedResourceService.unsaveResource(userId, resourceId);
+    } catch (err) {
+      if (err.statusCode !== 404) {
+        throw err;
+      }
+    }
+    res.status(200).json({
+      status: 200,
+      message: 'Resource unsaved successfully',
+    });
+    return;
+  }
+
   const saved = await savedResourceService.saveResource(
     userId,
     resourceId,
