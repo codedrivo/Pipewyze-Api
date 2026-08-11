@@ -64,5 +64,6 @@ const essentialToolSchema = new mongoose.Schema(
 essentialToolSchema.plugin(toJSON);
 
 const EssentialTool = mongoose.model('EssentialTool', essentialToolSchema);
+mongoose.model('LibraryTools', essentialToolSchema, 'essentialtools');
 
 module.exports = EssentialTool;

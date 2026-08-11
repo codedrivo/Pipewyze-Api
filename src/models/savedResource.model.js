@@ -17,7 +17,7 @@ const savedResourceSchema = mongoose.Schema(
     resourceType: {
       type: String,
       required: true,
-      enum: ['MaintenanceGuide', 'PlumbingCode', 'EssentialTool'],
+      enum: ['MaintenanceGuide', 'PlumbingCode', 'EssentialTool', 'LibraryTools'],
     },
   },
   {
