@@ -3,10 +3,16 @@ const service = require('../../services/admin/plumbingCode.service');
 
 const createPlumbingCode = catchAsync(async (req, res) => {
   const code = await service.createPlumbingCode(req.body);
+  const codeJson = code.toJSON ? code.toJSON() : code;
+  const PlumbingCodeCategory = require('../../models/plumbingCodeCategory.model');
+  const categoryDoc = await PlumbingCodeCategory.findOne({
+    $or: [{ name: code.category }, { fullName: code.category }],
+  });
+  codeJson.categoryFullName = categoryDoc ? categoryDoc.fullName : code.category || '';
   res.status(201).json({
     status: 201,
     message: 'Plumbing code created successfully',
-    code,
+    code: codeJson,
   });
 });
 
@@ -28,7 +34,11 @@ const getPlumbingCodes = catchAsync(async (req, res) => {
 
   const PlumbingCodeCategory = require('../../models/plumbingCodeCategory.model');
   const categories = await PlumbingCodeCategory.find();
-  const categoryMap = new Map(categories.map((c) => [c.name, c.fullName]));
+  const categoryMap = new Map();
+  categories.forEach((c) => {
+    categoryMap.set(c.name, c.fullName);
+    categoryMap.set(c.fullName, c.fullName);
+  });
 
   let codesWithSaved = codes;
   if (req.user) {
@@ -44,13 +54,13 @@ const getPlumbingCodes = catchAsync(async (req, res) => {
     codesWithSaved = codes.map((code) => {
       const codeJson = code.toJSON ? code.toJSON() : code;
       codeJson.isSaved = savedResourceIds.has(code._id.toString());
-      codeJson.categoryFullName = categoryMap.get(code.category) || '';
+      codeJson.categoryFullName = categoryMap.get(code.category) || code.category || '';
       return codeJson;
     });
   } else {
     codesWithSaved = codes.map((code) => {
       const codeJson = code.toJSON ? code.toJSON() : code;
-      codeJson.categoryFullName = categoryMap.get(code.category) || '';
+      codeJson.categoryFullName = categoryMap.get(code.category) || code.category || '';
       return codeJson;
     });
   }
@@ -66,9 +76,9 @@ const getPlumbingCode = catchAsync(async (req, res) => {
 
   const PlumbingCodeCategory = require('../../models/plumbingCodeCategory.model');
   const categoryDoc = await PlumbingCodeCategory.findOne({
-    name: code.category,
+    $or: [{ name: code.category }, { fullName: code.category }],
   });
-  codeJson.categoryFullName = categoryDoc ? categoryDoc.fullName : '';
+  codeJson.categoryFullName = categoryDoc ? categoryDoc.fullName : code.category || '';
 
   if (req.user) {
     const SavedResource = require('../../models/savedResource.model');
@@ -87,10 +97,16 @@ const getPlumbingCode = catchAsync(async (req, res) => {
 
 const updatePlumbingCode = catchAsync(async (req, res) => {
   const code = await service.updatePlumbingCodeById(req.params.id, req.body);
+  const codeJson = code.toJSON ? code.toJSON() : code;
+  const PlumbingCodeCategory = require('../../models/plumbingCodeCategory.model');
+  const categoryDoc = await PlumbingCodeCategory.findOne({
+    $or: [{ name: code.category }, { fullName: code.category }],
+  });
+  codeJson.categoryFullName = categoryDoc ? categoryDoc.fullName : code.category || '';
   res.status(200).json({
     status: 200,
     message: 'Plumbing code updated successfully',
-    code,
+    code: codeJson,
   });
 });
 
