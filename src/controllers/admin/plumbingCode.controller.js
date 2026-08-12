@@ -1,10 +1,10 @@
 const catchAsync = require('../../helpers/asyncErrorHandler');
 const service = require('../../services/admin/plumbingCode.service');
+  const PlumbingCodeCategory = require('../../models/plumbingCodeCategory.model');
 
 const createPlumbingCode = catchAsync(async (req, res) => {
   const code = await service.createPlumbingCode(req.body);
   const codeJson = code.toJSON ? code.toJSON() : code;
-  const PlumbingCodeCategory = require('../../models/plumbingCodeCategory.model');
   const categoryDoc = await PlumbingCodeCategory.findOne({
     $or: [{ name: code.category }, { fullName: code.category }],
   });
@@ -32,7 +32,6 @@ const getPlumbingCodes = catchAsync(async (req, res) => {
   }
   const codes = await service.getPlumbingCodes(filter, { limit, page });
 
-  const PlumbingCodeCategory = require('../../models/plumbingCodeCategory.model');
   const categories = await PlumbingCodeCategory.find();
   const categoryMap = new Map();
   categories.forEach((c) => {
@@ -74,7 +73,6 @@ const getPlumbingCode = catchAsync(async (req, res) => {
   const code = await service.getPlumbingCodeById(req.params.id);
   let codeJson = code.toJSON ? code.toJSON() : code;
 
-  const PlumbingCodeCategory = require('../../models/plumbingCodeCategory.model');
   const categoryDoc = await PlumbingCodeCategory.findOne({
     $or: [{ name: code.category }, { fullName: code.category }],
   });
@@ -98,7 +96,6 @@ const getPlumbingCode = catchAsync(async (req, res) => {
 const updatePlumbingCode = catchAsync(async (req, res) => {
   const code = await service.updatePlumbingCodeById(req.params.id, req.body);
   const codeJson = code.toJSON ? code.toJSON() : code;
-  const PlumbingCodeCategory = require('../../models/plumbingCodeCategory.model');
   const categoryDoc = await PlumbingCodeCategory.findOne({
     $or: [{ name: code.category }, { fullName: code.category }],
   });
