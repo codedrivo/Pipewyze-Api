@@ -8,7 +8,7 @@ const password = (value, helpers) => {
     )
   ) {
     return helpers.message(
-      'Password must me 8 characters long with at least one capital letter, one small letter, one digit, one special character',
+      'Password must be 8 characters long with at least one capital letter, one small letter, one digit, one special character',
     );
   }
   return value;

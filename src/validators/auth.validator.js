@@ -1,9 +1,13 @@
 const Joi = require('joi');
 const { email, phone } = require('./common.validator');
 const password = (value, helpers) => {
-  if (!/^(?=.*[a-zA-Z])(?=.*[0-9]).{8,}$/.test(value)) {
+  if (
+    !value.match(
+      /^(?=.*?[A-Z])(?=.*?[a-z])(?=.*?[0-9])(?=.*?[#?!@$%^&*-]).{8,}$/,
+    )
+  ) {
     return helpers.message(
-      'Password must be at least 8 characters and contain both letters and numbers',
+      'Password must be 8 characters long with at least one capital letter, one small letter, one digit, one special character',
     );
   }
   return value;
@@ -63,13 +67,13 @@ const reset = Joi.object({
   email: email,
   phone: phone,
   otp: Joi.string().max(6).min(6).required(),
-  newPassword: Joi.string().required(),
+  newPassword: Joi.string().required().custom(password),
 }).xor('email', 'phone');
 
 const resetAdmin = Joi.object({
   email: email.required(),
   otp: Joi.string().max(6).min(6).required(),
-  password: Joi.string().required(),
+  password: Joi.string().required().custom(password),
 });
 
 const verify = Joi.object({
@@ -97,7 +101,7 @@ const logout = Joi.object({
 // CTG RESET PASS
 const ctgreset = Joi.object({
   email: email.required(),
-  password: Joi.string().required(),
+  password: Joi.string().required().custom(password),
 });
 
 const phoneVerify = Joi.object({
