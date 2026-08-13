@@ -70,7 +70,7 @@ const sendEmailOTP = async (
       `Your verification code is ${otp}. It will expire in 5 minutes.`,
       `<p>Your verification code is: <b>${otp}</b>. It will expire in 5 minutes.</p>`,
     );
-    return true;
+    return otp;
   } catch (e) {
     throw new ApiError(e.message, 500);
   }

@@ -6,6 +6,7 @@ const catchAsync = require('../../helpers/asyncErrorHandler');
 const ApiError = require('../../helpers/apiErrorConverter');
 const { OAuth2Client } = require('google-auth-library');
 const crypto = require('crypto');
+const config = require('../../config/config');
 
 const notifyAdmin = catchAsync(async (req, res) => {
   const bodyData = req.body;
@@ -55,7 +56,7 @@ const forgotPassword = catchAsync(async (req, res, next) => {
       message: 'No account found with this email address',
     });
   }
-  await otps.sendEmailOTP(
+  const otp = await otps.sendEmailOTP(
     email,
     'email',
     'd-c60beffa1f45430eb5ed565009adfef6',
@@ -63,6 +64,7 @@ const forgotPassword = catchAsync(async (req, res, next) => {
   );
   res.status(200).send({
     message: 'OTP sent to your email address',
+    ...(config.env === 'dev' && { otp }),
   });
 });
 
@@ -189,12 +191,15 @@ const forgotPasswordResend = catchAsync(async (req, res, next) => {
   if (!user) {
     throw new ApiError('User Not Found', 404);
   }
-  await otps.sendEmailOTP(
+  const otp = await otps.sendEmailOTP(
     user.email,
     'email',
     'd-c60beffa1f45430eb5ed565009adfef6',
   );
-  res.status(200).send({ message: 'OTP Sent to the email address' });
+  res.status(200).send({
+    message: 'OTP Sent to the email address',
+    ...(config.env === 'dev' && { otp }),
+  });
 });
 
 module.exports = {
