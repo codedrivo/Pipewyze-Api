@@ -2,9 +2,13 @@ const Joi = require('joi');
 const { email, phone } = require('./common.validator');
 
 const password = (value, helpers) => {
-  if (!/^(?=.*[a-zA-Z])(?=.*[0-9]).{8,}$/.test(value)) {
+  if (
+    !value.match(
+      /^(?=.*?[A-Z])(?=.*?[a-z])(?=.*?[0-9])(?=.*?[#?!@$%^&*-]).{8,}$/,
+    )
+  ) {
     return helpers.message(
-      'Password must be at least 8 characters and contain both letters and numbers',
+      'Password must be 8 characters long with at least one capital letter, one small letter, one digit, one special character',
     );
   }
   return value;
