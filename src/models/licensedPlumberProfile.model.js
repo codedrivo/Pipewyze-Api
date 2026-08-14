@@ -21,6 +21,10 @@ const licensedPlumberProfileSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    address: {
+      type: String,
+      default: '',
+    },
     location: {
       type: {
         type: String,

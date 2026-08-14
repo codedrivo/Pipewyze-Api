@@ -53,12 +53,13 @@ const userListFind = async (
 };
 
 const addUser = async (userData) => {
-  const { latitude, longitude, ...restData } = userData;
+  const { latitude, longitude, address, ...restData } = userData;
   const user = await User.create(restData);
   if (user.role === 'licensed-plumber') {
     const LicensedPlumberProfile = require('../../models/licensedPlumberProfile.model');
     const profileData = {
       userId: user._id,
+      address: address || '',
     };
     if (latitude && longitude) {
       profileData.location = {
@@ -83,9 +84,12 @@ const editUser = async (id) => {
     if (user.role === 'licensed-plumber') {
       const LicensedPlumberProfile = require('../../models/licensedPlumberProfile.model');
       const profile = await LicensedPlumberProfile.findOne({ userId: user._id });
-      if (profile && profile.location && profile.location.coordinates) {
-        userJson.longitude = profile.location.coordinates[0];
-        userJson.latitude = profile.location.coordinates[1];
+      if (profile) {
+        userJson.address = profile.address || '';
+        if (profile.location && profile.location.coordinates) {
+          userJson.longitude = profile.location.coordinates[0];
+          userJson.latitude = profile.location.coordinates[1];
+        }
       }
     }
     return userJson;
@@ -95,7 +99,7 @@ const editUser = async (id) => {
 };
 
 const updateUser = async (id, data) => {
-  const { latitude, longitude, ...restData } = data;
+  const { latitude, longitude, address, ...restData } = data;
   const user = await User.findByIdAndUpdate(
     { _id: new mongoose.Types.ObjectId(id) },
     restData,
@@ -106,6 +110,9 @@ const updateUser = async (id, data) => {
     let profile = await LicensedPlumberProfile.findOne({ userId: user._id });
     if (!profile) {
       profile = new LicensedPlumberProfile({ userId: user._id });
+    }
+    if (address !== undefined) {
+      profile.address = address;
     }
     if (latitude !== undefined && longitude !== undefined) {
       if (latitude === '' || longitude === '' || latitude === null || longitude === null) {
