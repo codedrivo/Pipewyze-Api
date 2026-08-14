@@ -9,23 +9,33 @@ const createLicensedPlumber = async (data) => {
   if (data.phone && (await User.findOne({ phone: data.phone }))) {
     throw new ApiError('Phone number already registered', 400);
   }
-  const { yearsOfService, serviceLocations, servicesOffered, ...userData } =
+  const { yearsOfService, serviceLocations, servicesOffered, latitude, longitude, ...userData } =
     data;
 
   const user = await User.create({ ...userData, role: 'licensed-plumber' });
 
-  const profile = await LicensedPlumberProfile.create({
+  const profileData = {
     userId: user._id,
     yearsOfService: yearsOfService || '',
     serviceLocations: serviceLocations || [],
     servicesOffered: servicesOffered || [],
-  });
+  };
+
+  if (latitude !== undefined && longitude !== undefined && latitude !== '' && longitude !== '' && latitude !== null && longitude !== null) {
+    profileData.location = {
+      type: 'Point',
+      coordinates: [parseFloat(longitude) || 0, parseFloat(latitude) || 0],
+    };
+  }
+
+  const profile = await LicensedPlumberProfile.create(profileData);
 
   return {
     ...user.toJSON(),
     yearsOfService: profile.yearsOfService,
     serviceLocations: profile.serviceLocations,
     servicesOffered: profile.servicesOffered,
+    location: profile.location,
   };
 };
 
@@ -66,7 +76,7 @@ const updateLicensedPlumberById = async (id, updateBody) => {
     throw new ApiError('Phone number already registered', 400);
   }
 
-  const { yearsOfService, serviceLocations, servicesOffered, ...userData } =
+  const { yearsOfService, serviceLocations, servicesOffered, latitude, longitude, ...userData } =
     updateBody;
 
   Object.assign(user, userData);
@@ -81,6 +91,17 @@ const updateLicensedPlumberById = async (id, updateBody) => {
   if (serviceLocations !== undefined)
     profile.serviceLocations = serviceLocations;
   if (servicesOffered !== undefined) profile.servicesOffered = servicesOffered;
+
+  if (latitude !== undefined && longitude !== undefined) {
+    if (latitude === '' || longitude === '' || latitude === null || longitude === null) {
+      profile.location = undefined;
+    } else {
+      profile.location = {
+        type: 'Point',
+        coordinates: [parseFloat(longitude) || 0, parseFloat(latitude) || 0],
+      };
+    }
+  }
 
   await profile.save();
 
@@ -108,14 +129,16 @@ const queryLicensedPlumbers = async (
   limit = 10,
   latitude = null,
   longitude = null,
-  radius = 10, // radius in miles
+  radius = 2, // default 2
+  unit = 'km', // default unit is km
 ) => {
   const query = { role: 'licensed-plumber' };
 
-  if (latitude !== null && longitude !== null) {
+  if (latitude !== null && longitude !== null && latitude !== '' && longitude !== '') {
     const lat = parseFloat(latitude);
     const lng = parseFloat(longitude);
-    const radMeters = parseFloat(radius) * 1609.34; // convert miles to meters
+    const multiplier = unit === 'miles' ? 1609.34 : 1000;
+    const radMeters = parseFloat(radius || 2) * multiplier;
 
     const nearbyProfiles = await LicensedPlumberProfile.find({
       location: {
