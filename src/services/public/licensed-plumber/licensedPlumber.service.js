@@ -130,7 +130,7 @@ const queryLicensedPlumbers = async (
   latitude = null,
   longitude = null,
   radius = 2, // default 2
-  unit = 'km', // default unit is km
+  unit = 'miles', // default unit is miles
 ) => {
   const query = { role: 'licensed-plumber' };
 
