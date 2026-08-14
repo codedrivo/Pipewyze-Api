@@ -7,7 +7,12 @@ router.get(
   '/',
   auth(),
   catchAsync(async (req, res) => {
-    const videos = await service.getTrendingVideos({});
+    const { targetAudience } = req.query;
+    const query = {};
+    if (targetAudience) {
+      query.targetAudience = targetAudience;
+    }
+    const videos = await service.getTrendingVideos(query);
     res.status(200).json({
       status: 200,
       videos,
