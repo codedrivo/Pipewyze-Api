@@ -22,6 +22,11 @@ const trendingVideoSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    targetAudience: {
+      type: String,
+      enum: ['apprentice', 'licensed-plumber'],
+      default: 'apprentice',
+    },
   },
   {
     timestamps: true,

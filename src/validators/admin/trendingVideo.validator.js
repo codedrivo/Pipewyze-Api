@@ -5,6 +5,7 @@ const createTrendingVideo = Joi.object({
   videoUrl: Joi.string().required(),
   description: Joi.string().allow('').optional(),
   thumbnail: Joi.string().allow('').optional(),
+  targetAudience: Joi.string().valid('apprentice', 'licensed-plumber').optional(),
 });
 
 const updateTrendingVideo = Joi.object({
@@ -12,6 +13,7 @@ const updateTrendingVideo = Joi.object({
   videoUrl: Joi.string().optional(),
   description: Joi.string().allow('').optional(),
   thumbnail: Joi.string().allow('').optional(),
+  targetAudience: Joi.string().valid('apprentice', 'licensed-plumber').optional(),
 });
 
 const singleId = Joi.object({
