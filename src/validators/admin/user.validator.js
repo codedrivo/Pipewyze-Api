@@ -30,6 +30,7 @@ const addUser = Joi.object({
   profileimageurl: Joi.optional(),
   latitude: Joi.number().optional().allow(null, ''),
   longitude: Joi.number().optional().allow(null, ''),
+  address: Joi.string().optional().allow('', null),
 });
 
 const updateuser = Joi.object({
@@ -41,6 +42,7 @@ const updateuser = Joi.object({
   profileimageurl: Joi.optional(),
   latitude: Joi.number().optional().allow(null, ''),
   longitude: Joi.number().optional().allow(null, ''),
+  address: Joi.string().optional().allow('', null),
 });
 
 const singleId = Joi.object({

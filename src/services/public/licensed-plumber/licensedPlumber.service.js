@@ -9,7 +9,7 @@ const createLicensedPlumber = async (data) => {
   if (data.phone && (await User.findOne({ phone: data.phone }))) {
     throw new ApiError('Phone number already registered', 400);
   }
-  const { yearsOfService, serviceLocations, servicesOffered, latitude, longitude, ...userData } =
+  const { yearsOfService, serviceLocations, servicesOffered, latitude, longitude, address, ...userData } =
     data;
 
   const user = await User.create({ ...userData, role: 'licensed-plumber' });
@@ -19,6 +19,7 @@ const createLicensedPlumber = async (data) => {
     yearsOfService: yearsOfService || '',
     serviceLocations: serviceLocations || [],
     servicesOffered: servicesOffered || [],
+    address: address || '',
   };
 
   if (latitude !== undefined && longitude !== undefined && latitude !== '' && longitude !== '' && latitude !== null && longitude !== null) {
@@ -35,6 +36,7 @@ const createLicensedPlumber = async (data) => {
     yearsOfService: profile.yearsOfService,
     serviceLocations: profile.serviceLocations,
     servicesOffered: profile.servicesOffered,
+    address: profile.address,
     location: profile.location,
   };
 };
@@ -47,7 +49,7 @@ const getLicensedPlumberById = async (id) => {
 
   let profile = await LicensedPlumberProfile.findOne({ userId: id });
   if (!profile) {
-    profile = { yearsOfService: '', serviceLocations: [], servicesOffered: [] };
+    profile = { yearsOfService: '', serviceLocations: [], servicesOffered: [], address: '' };
   }
 
   return {
@@ -55,6 +57,7 @@ const getLicensedPlumberById = async (id) => {
     yearsOfService: profile.yearsOfService,
     serviceLocations: profile.serviceLocations,
     servicesOffered: profile.servicesOffered,
+    address: profile.address || '',
   };
 };
 
@@ -76,7 +79,7 @@ const updateLicensedPlumberById = async (id, updateBody) => {
     throw new ApiError('Phone number already registered', 400);
   }
 
-  const { yearsOfService, serviceLocations, servicesOffered, latitude, longitude, ...userData } =
+  const { yearsOfService, serviceLocations, servicesOffered, latitude, longitude, address, ...userData } =
     updateBody;
 
   Object.assign(user, userData);
@@ -91,6 +94,7 @@ const updateLicensedPlumberById = async (id, updateBody) => {
   if (serviceLocations !== undefined)
     profile.serviceLocations = serviceLocations;
   if (servicesOffered !== undefined) profile.servicesOffered = servicesOffered;
+  if (address !== undefined) profile.address = address;
 
   if (latitude !== undefined && longitude !== undefined) {
     if (latitude === '' || longitude === '' || latitude === null || longitude === null) {
@@ -110,6 +114,7 @@ const updateLicensedPlumberById = async (id, updateBody) => {
     yearsOfService: profile.yearsOfService,
     serviceLocations: profile.serviceLocations,
     servicesOffered: profile.servicesOffered,
+    address: profile.address,
   };
 };
 
@@ -180,6 +185,7 @@ const queryLicensedPlumbers = async (
         yearsOfService: profile ? profile.yearsOfService : '',
         serviceLocations: profile ? profile.serviceLocations : [],
         servicesOffered: profile ? profile.servicesOffered : [],
+        address: profile ? profile.address : '',
         location: profile ? profile.location : null,
       };
     }),
