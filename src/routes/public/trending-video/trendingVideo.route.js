@@ -1,0 +1,30 @@
+const router = require('express').Router();
+const service = require('../../../services/admin/trendingVideo.service');
+const catchAsync = require('../../../helpers/asyncErrorHandler');
+const auth = require('../../../middlewares/auth.middleware');
+
+router.get(
+  '/',
+  auth(),
+  catchAsync(async (req, res) => {
+    const videos = await service.getTrendingVideos({});
+    res.status(200).json({
+      status: 200,
+      videos,
+    });
+  }),
+);
+
+router.get(
+  '/:id',
+  auth(),
+  catchAsync(async (req, res) => {
+    const video = await service.getTrendingVideoById(req.params.id);
+    res.status(200).json({
+      status: 200,
+      video,
+    });
+  }),
+);
+
+module.exports = router;
