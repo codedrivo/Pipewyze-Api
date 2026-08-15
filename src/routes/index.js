@@ -14,7 +14,10 @@ const adminPlumbingCodeRoute = require('./admin/plumbingCode.route');
 const adminPlumbingCodeCategoryRoute = require('./admin/plumbingCodeCategory.route');
 const adminMaintenanceGuideRoute = require('./admin/maintenanceGuide.route');
 const adminTrendingVideoRoute = require('./admin/trendingVideo.route');
+const adminFaqRoute = require('./admin/faq.route');
+const adminSupportRoute = require('./admin/support.route');
 const profileRoute = require('./profile/profile.route');
+const pageRoute = require('./page.route');
 
 const apprenticeRoute = require('./public/apprentice/apprentice.route');
 const homeOwnerRoute = require('./public/home-owner/homeOwner.route');
@@ -24,6 +27,7 @@ const plumbingCodePublicRoute = require('./public/plumbing-code/plumbingCode.rou
 const savedResourceRoute = require('./public/saved-resource/savedResource.route');
 const toolsLibraryRoute = require('./public/tools-library/toolsLibrary.route');
 const trendingVideoPublicRoute = require('./public/trending-video/trendingVideo.route');
+const faqPublicRoute = require('./public/faq/faq.route');
 
 // all routes
 router.use('/auth', authRouter);
@@ -42,6 +46,9 @@ router.use('/admin/plumbing-code', adminPlumbingCodeRoute);
 router.use('/admin/plumbing-code-category', adminPlumbingCodeCategoryRoute);
 router.use('/admin/maintenance-guide', adminMaintenanceGuideRoute);
 router.use('/admin/trending-video', adminTrendingVideoRoute);
+router.use('/admin/faq', adminFaqRoute);
+router.use('/admin/support', adminSupportRoute);
+router.use('/', pageRoute);
 
 router.use('/profile', profileRoute);
 
@@ -54,5 +61,6 @@ router.use('/public/plumbing-codes', plumbingCodePublicRoute);
 router.use('/public/saved-resources', savedResourceRoute);
 router.use('/public/tools-library', toolsLibraryRoute);
 router.use('/public/trending-videos', trendingVideoPublicRoute);
+router.use('/public/faq', faqPublicRoute);
 
 module.exports = router;
