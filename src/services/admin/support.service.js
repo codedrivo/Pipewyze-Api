@@ -18,7 +18,8 @@ const resolveSupportRequest = async (id, adminReply) => {
   await request.save();
 
   // Send the template email back to the user
-  const fullName = `${request.firstName} ${request.lastName || ''}`.trim() || 'User';
+  const fullName =
+    `${request.firstName} ${request.lastName || ''}`.trim() || 'User';
   await emailService.sendTemplateEmail({
     to: request.email,
     subject: `PipeWyze Support: Re: ${request.subject || 'Support Request'}`,

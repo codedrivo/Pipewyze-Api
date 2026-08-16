@@ -1,6 +1,6 @@
 const catchAsync = require('../../helpers/asyncErrorHandler');
 const service = require('../../services/admin/plumbingCode.service');
-  const PlumbingCodeCategory = require('../../models/plumbingCodeCategory.model');
+const PlumbingCodeCategory = require('../../models/plumbingCodeCategory.model');
 
 const createPlumbingCode = catchAsync(async (req, res) => {
   const code = await service.createPlumbingCode(req.body);
@@ -8,7 +8,9 @@ const createPlumbingCode = catchAsync(async (req, res) => {
   const categoryDoc = await PlumbingCodeCategory.findOne({
     $or: [{ name: code.category }, { fullName: code.category }],
   });
-  codeJson.categoryFullName = categoryDoc ? `${categoryDoc.fullName} (${categoryDoc.name})` : code.category || '';
+  codeJson.categoryFullName = categoryDoc
+    ? `${categoryDoc.fullName} (${categoryDoc.name})`
+    : code.category || '';
   res.status(201).json({
     status: 201,
     message: 'Plumbing code created successfully',
@@ -53,13 +55,15 @@ const getPlumbingCodes = catchAsync(async (req, res) => {
     codesWithSaved = codes.map((code) => {
       const codeJson = code.toJSON ? code.toJSON() : code;
       codeJson.isSaved = savedResourceIds.has(code._id.toString());
-      codeJson.categoryFullName = categoryMap.get(code.category) || code.category || '';
+      codeJson.categoryFullName =
+        categoryMap.get(code.category) || code.category || '';
       return codeJson;
     });
   } else {
     codesWithSaved = codes.map((code) => {
       const codeJson = code.toJSON ? code.toJSON() : code;
-      codeJson.categoryFullName = categoryMap.get(code.category) || code.category || '';
+      codeJson.categoryFullName =
+        categoryMap.get(code.category) || code.category || '';
       return codeJson;
     });
   }
@@ -76,7 +80,9 @@ const getPlumbingCode = catchAsync(async (req, res) => {
   const categoryDoc = await PlumbingCodeCategory.findOne({
     $or: [{ name: code.category }, { fullName: code.category }],
   });
-  codeJson.categoryFullName = categoryDoc ? `${categoryDoc.fullName} (${categoryDoc.name})` : code.category || '';
+  codeJson.categoryFullName = categoryDoc
+    ? `${categoryDoc.fullName} (${categoryDoc.name})`
+    : code.category || '';
 
   if (req.user) {
     const SavedResource = require('../../models/savedResource.model');
@@ -99,7 +105,9 @@ const updatePlumbingCode = catchAsync(async (req, res) => {
   const categoryDoc = await PlumbingCodeCategory.findOne({
     $or: [{ name: code.category }, { fullName: code.category }],
   });
-  codeJson.categoryFullName = categoryDoc ? `${categoryDoc.fullName} (${categoryDoc.name})` : code.category || '';
+  codeJson.categoryFullName = categoryDoc
+    ? `${categoryDoc.fullName} (${categoryDoc.name})`
+    : code.category || '';
   res.status(200).json({
     status: 200,
     message: 'Plumbing code updated successfully',
