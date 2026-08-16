@@ -1,8 +1,8 @@
+/* global Invitations */
 const User = require('../../models/user.model');
 const ApiError = require('../../helpers/apiErrorConverter');
 
 const mongoose = require('mongoose');
-const { http } = require('winston');
 
 const userListFind = async (
   id,
@@ -83,7 +83,9 @@ const editUser = async (id) => {
     const userJson = user.toJSON();
     if (user.role === 'licensed-plumber') {
       const LicensedPlumberProfile = require('../../models/licensedPlumberProfile.model');
-      const profile = await LicensedPlumberProfile.findOne({ userId: user._id });
+      const profile = await LicensedPlumberProfile.findOne({
+        userId: user._id,
+      });
       if (profile) {
         userJson.address = profile.address || '';
         if (profile.location && profile.location.coordinates) {
@@ -115,7 +117,12 @@ const updateUser = async (id, data) => {
       profile.address = address;
     }
     if (latitude !== undefined && longitude !== undefined) {
-      if (latitude === '' || longitude === '' || latitude === null || longitude === null) {
+      if (
+        latitude === '' ||
+        longitude === '' ||
+        latitude === null ||
+        longitude === null
+      ) {
         profile.location = undefined;
       } else {
         profile.location = {

@@ -12,7 +12,10 @@ const getSupportRequests = catchAsync(async (req, res) => {
 
 const resolveSupportRequest = catchAsync(async (req, res) => {
   const { adminReply } = req.body;
-  const request = await service.resolveSupportRequest(req.params.id, adminReply);
+  const request = await service.resolveSupportRequest(
+    req.params.id,
+    adminReply,
+  );
   res.status(200).json({
     status: 200,
     message: 'Support request resolved and reply email sent successfully',

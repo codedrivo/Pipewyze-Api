@@ -18,6 +18,7 @@ const adminFaqRoute = require('./admin/faq.route');
 const adminSupportRoute = require('./admin/support.route');
 const profileRoute = require('./profile/profile.route');
 const pageRoute = require('./page.route');
+const chatRoute = require('./chat/chat.route');
 
 const apprenticeRoute = require('./public/apprentice/apprentice.route');
 const homeOwnerRoute = require('./public/home-owner/homeOwner.route');
@@ -51,6 +52,7 @@ router.use('/admin/support', adminSupportRoute);
 router.use('/', pageRoute);
 
 router.use('/profile', profileRoute);
+router.use('/chat', chatRoute);
 
 // public role routes
 router.use('/public/apprentice', apprenticeRoute);

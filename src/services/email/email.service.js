@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 const nodemailer = require('nodemailer');
 const config = require('../../config/config');
 
@@ -66,7 +67,13 @@ const sendEmail = async (to, subject, text, html) => {
   }
 };
 
-const sendTemplateEmail = async ({ to, subject, templateName, variables, replyTo }) => {
+const sendTemplateEmail = async ({
+  to,
+  subject,
+  templateName,
+  variables,
+  replyTo,
+}) => {
   let html = '';
   if (templateName === 'contact') {
     html = `<!DOCTYPE html>
@@ -236,7 +243,8 @@ const sendTemplateEmail = async ({ to, subject, templateName, variables, replyTo
   }
 
   const mailTransporter = getTransporter();
-  const from = config.email.from || (config.email.smtp && config.email.smtp.user);
+  const from =
+    config.email.from || (config.email.smtp && config.email.smtp.user);
 
   if (!mailTransporter || !from) {
     console.log(
@@ -261,7 +269,10 @@ const sendTemplateEmail = async ({ to, subject, templateName, variables, replyTo
     console.log(`[EMAIL] Template email sent successfully to ${to}`);
     return true;
   } catch (error) {
-    console.error(`[EMAIL ERROR] Failed to send template email to ${to}:`, error);
+    console.error(
+      `[EMAIL ERROR] Failed to send template email to ${to}:`,
+      error,
+    );
     console.log(
       `[DEV EMAIL LOG] To: ${to} | Subject: ${subject} | Body: ${html}`,
     );

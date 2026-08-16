@@ -9,8 +9,15 @@ const createLicensedPlumber = async (data) => {
   if (data.phone && (await User.findOne({ phone: data.phone }))) {
     throw new ApiError('Phone number already registered', 400);
   }
-  const { yearsOfService, serviceLocations, servicesOffered, latitude, longitude, address, ...userData } =
-    data;
+  const {
+    yearsOfService,
+    serviceLocations,
+    servicesOffered,
+    latitude,
+    longitude,
+    address,
+    ...userData
+  } = data;
 
   const user = await User.create({ ...userData, role: 'licensed-plumber' });
 
@@ -22,7 +29,14 @@ const createLicensedPlumber = async (data) => {
     address: address || '',
   };
 
-  if (latitude !== undefined && longitude !== undefined && latitude !== '' && longitude !== '' && latitude !== null && longitude !== null) {
+  if (
+    latitude !== undefined &&
+    longitude !== undefined &&
+    latitude !== '' &&
+    longitude !== '' &&
+    latitude !== null &&
+    longitude !== null
+  ) {
     profileData.location = {
       type: 'Point',
       coordinates: [parseFloat(longitude) || 0, parseFloat(latitude) || 0],
@@ -49,7 +63,12 @@ const getLicensedPlumberById = async (id) => {
 
   let profile = await LicensedPlumberProfile.findOne({ userId: id });
   if (!profile) {
-    profile = { yearsOfService: '', serviceLocations: [], servicesOffered: [], address: '' };
+    profile = {
+      yearsOfService: '',
+      serviceLocations: [],
+      servicesOffered: [],
+      address: '',
+    };
   }
 
   return {
@@ -79,8 +98,15 @@ const updateLicensedPlumberById = async (id, updateBody) => {
     throw new ApiError('Phone number already registered', 400);
   }
 
-  const { yearsOfService, serviceLocations, servicesOffered, latitude, longitude, address, ...userData } =
-    updateBody;
+  const {
+    yearsOfService,
+    serviceLocations,
+    servicesOffered,
+    latitude,
+    longitude,
+    address,
+    ...userData
+  } = updateBody;
 
   Object.assign(user, userData);
   await user.save();
@@ -97,7 +123,12 @@ const updateLicensedPlumberById = async (id, updateBody) => {
   if (address !== undefined) profile.address = address;
 
   if (latitude !== undefined && longitude !== undefined) {
-    if (latitude === '' || longitude === '' || latitude === null || longitude === null) {
+    if (
+      latitude === '' ||
+      longitude === '' ||
+      latitude === null ||
+      longitude === null
+    ) {
       profile.location = undefined;
     } else {
       profile.location = {
@@ -139,7 +170,12 @@ const queryLicensedPlumbers = async (
 ) => {
   const query = { role: 'licensed-plumber' };
 
-  if (latitude !== null && longitude !== null && latitude !== '' && longitude !== '') {
+  if (
+    latitude !== null &&
+    longitude !== null &&
+    latitude !== '' &&
+    longitude !== ''
+  ) {
     const lat = parseFloat(latitude);
     const lng = parseFloat(longitude);
     const multiplier = unit === 'miles' ? 1609.34 : 1000;
