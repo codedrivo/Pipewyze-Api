@@ -17,12 +17,16 @@ const createTrendingVideo = catchAsync(async (req, res) => {
 const getTrendingVideos = catchAsync(async (req, res) => {
   const search = req.query.search || '';
   const targetAudience = req.query.targetAudience || '';
+  const isAiVideo = req.query.isAiVideo;
   const query = {};
   if (search) {
     query.title = { $regex: search, $options: 'i' };
   }
   if (targetAudience) {
     query.targetAudience = targetAudience;
+  }
+  if (isAiVideo !== undefined) {
+    query.isAiVideo = isAiVideo === 'true';
   }
   const videos = await service.getTrendingVideos(query);
   res.status(200).json({

@@ -28,6 +28,7 @@ const plumbingCodePublicRoute = require('./public/plumbing-code/plumbingCode.rou
 const savedResourceRoute = require('./public/saved-resource/savedResource.route');
 const toolsLibraryRoute = require('./public/tools-library/toolsLibrary.route');
 const trendingVideoPublicRoute = require('./public/trending-video/trendingVideo.route');
+const aiVideoPublicRoute = require('./public/ai-video/aiVideo.route');
 const faqPublicRoute = require('./public/faq/faq.route');
 
 // all routes
@@ -63,6 +64,7 @@ router.use('/public/plumbing-codes', plumbingCodePublicRoute);
 router.use('/public/saved-resources', savedResourceRoute);
 router.use('/public/tools-library', toolsLibraryRoute);
 router.use('/public/trending-videos', trendingVideoPublicRoute);
+router.use('/public/ai-videos', aiVideoPublicRoute);
 router.use('/public/faq', faqPublicRoute);
 
 module.exports = router;

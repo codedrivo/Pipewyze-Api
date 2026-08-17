@@ -1,0 +1,23 @@
+const router = require('express').Router();
+const service = require('../../../services/admin/trendingVideo.service');
+const catchAsync = require('../../../helpers/asyncErrorHandler');
+const auth = require('../../../middlewares/auth.middleware');
+
+router.get(
+  '/',
+  auth(),
+  catchAsync(async (req, res) => {
+    const { targetAudience } = req.query;
+    const query = { isAiVideo: true };
+    if (targetAudience) {
+      query.targetAudience = targetAudience;
+    }
+    const videos = await service.getTrendingVideos(query);
+    res.status(200).json({
+      status: 200,
+      videos,
+    });
+  }),
+);
+
+module.exports = router;
