@@ -8,6 +8,7 @@ const createTrendingVideo = Joi.object({
   targetAudience: Joi.string()
     .valid('apprentice', 'licensed-plumber')
     .optional(),
+  isAiVideo: Joi.boolean().optional(),
 });
 
 const updateTrendingVideo = Joi.object({
@@ -18,6 +19,7 @@ const updateTrendingVideo = Joi.object({
   targetAudience: Joi.string()
     .valid('apprentice', 'licensed-plumber')
     .optional(),
+  isAiVideo: Joi.boolean().optional(),
 });
 
 const singleId = Joi.object({
