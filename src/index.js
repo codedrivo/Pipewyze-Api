@@ -41,34 +41,40 @@ mongoose.connect(config.mongoose.url).then(() => {
       socket.join(roomId);
     });
 
-    socket.on('send_message', async ({ roomId, senderId, content }) => {
-      try {
-        if (!roomId || !senderId || !content) return;
+    socket.on(
+      'send_message',
+      async ({ roomId, senderId, content, fileUrl, fileType }) => {
+        try {
+          if (!roomId || !senderId) return;
+          if (!content && !fileUrl) return;
 
-        // Save the message to DB
-        const message = await Message.create({
-          roomId,
-          senderId,
-          content,
-        });
+          // Save the message to DB
+          const message = await Message.create({
+            roomId,
+            senderId,
+            content: content || '',
+            fileUrl: fileUrl || null,
+            fileType: fileType || null,
+          });
 
-        // Update the last message in the room
-        await ChatRoom.findByIdAndUpdate(roomId, {
-          lastMessage: message._id,
-        });
+          // Update the last message in the room
+          await ChatRoom.findByIdAndUpdate(roomId, {
+            lastMessage: message._id,
+          });
 
-        // Populate sender details for the response
-        const populatedMessage = await message.populate(
-          'senderId',
-          'fullName profileimageurl',
-        );
+          // Populate sender details for the response
+          const populatedMessage = await message.populate(
+            'senderId',
+            'fullName profileimageurl',
+          );
 
-        // Broadcast the message to all clients in the room (including sender)
-        io.to(roomId).emit('new_message', populatedMessage);
-      } catch (error) {
-        console.error('Error handling send_message socket event:', error);
-      }
-    });
+          // Broadcast the message to all clients in the room (including sender)
+          io.to(roomId).emit('new_message', populatedMessage);
+        } catch (error) {
+          console.error('Error handling send_message socket event:', error);
+        }
+      },
+    );
 
     socket.on('joinRoom', async ({ userId, groupId }) => {
       if (!userId || !groupId) return;
@@ -325,6 +331,25 @@ mongoose.connect(config.mongoose.url).then(() => {
       }
     } catch (err) {
       console.error('Error in cron job:', err);
+    }
+  });
+
+  // Chat Room cleanup cron (runs every 1 minute)
+  cron.schedule('*/1 * * * *', async () => {
+    try {
+      const minutes = config.chatRoomCleanupMinutes || 5;
+      const cutoff = new Date(Date.now() - minutes * 60 * 1000);
+      const result = await ChatRoom.deleteMany({
+        lastMessage: null,
+        createdAt: { $lt: cutoff },
+      });
+      if (result.deletedCount > 0) {
+        logger.info(
+          `[Chat Room Cleanup] Deleted ${result.deletedCount} empty chat rooms older than ${minutes} minutes.`,
+        );
+      }
+    } catch (error) {
+      logger.error('Error in chat room cleanup cron job:', error);
     }
   });
 });

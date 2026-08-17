@@ -103,8 +103,30 @@ const getRoomMessages = catchAsync(async (req, res) => {
   });
 });
 
+/**
+ * Upload photo or video for chat room attachments
+ */
+const uploadChatMedia = catchAsync(async (req, res) => {
+  if (!req.file) {
+    throw new ApiError('Please upload a video or photo file', 400);
+  }
+
+  console.log('Chat media file uploaded successfully:', {
+    name: req.file.originalname,
+    type: req.file.mimetype,
+    url: req.file.location,
+  });
+
+  res.status(200).send({
+    message: 'Media uploaded successfully',
+    fileUrl: req.file.location,
+    fileType: req.file.mimetype,
+  });
+});
+
 module.exports = {
   initChatRoom,
   getMyChatRooms,
   getRoomMessages,
+  uploadChatMedia,
 };

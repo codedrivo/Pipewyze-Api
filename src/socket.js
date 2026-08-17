@@ -28,36 +28,44 @@ io.on('connection', (socket) => {
   });
 
   // Handle client sending a message in a room
-  socket.on('send_message', async ({ roomId, senderId, content }) => {
-    try {
-      if (!roomId || !senderId || !content) {
-        return;
+  socket.on(
+    'send_message',
+    async ({ roomId, senderId, content, fileUrl, fileType }) => {
+      try {
+        if (!roomId || !senderId) {
+          return;
+        }
+        if (!content && !fileUrl) {
+          return;
+        }
+
+        // Save the message to DB
+        const message = await Message.create({
+          roomId,
+          senderId,
+          content: content || '',
+          fileUrl: fileUrl || null,
+          fileType: fileType || null,
+        });
+
+        // Update the last message in the room
+        await ChatRoom.findByIdAndUpdate(roomId, {
+          lastMessage: message._id,
+        });
+
+        // Populate sender details for the response
+        const populatedMessage = await message.populate(
+          'senderId',
+          'fullName profileimageurl',
+        );
+
+        // Broadcast the message to all clients in the room (including sender)
+        io.to(roomId).emit('new_message', populatedMessage);
+      } catch (error) {
+        console.error('Error handling send_message socket event:', error);
       }
-
-      // Save the message to DB
-      const message = await Message.create({
-        roomId,
-        senderId,
-        content,
-      });
-
-      // Update the last message in the room
-      await ChatRoom.findByIdAndUpdate(roomId, {
-        lastMessage: message._id,
-      });
-
-      // Populate sender details for the response
-      const populatedMessage = await message.populate(
-        'senderId',
-        'fullName profileimageurl',
-      );
-
-      // Broadcast the message to all clients in the room (including sender)
-      io.to(roomId).emit('new_message', populatedMessage);
-    } catch (error) {
-      console.error('Error handling send_message socket event:', error);
-    }
-  });
+    },
+  );
 
   socket.on('disconnect', () => {
     console.log('user disconnected:', socket.id);

@@ -41,7 +41,9 @@ const deleteQuestionById = async (id) => {
 // --- Video Service Methods ---
 
 const createVideo = async (data) => {
-  let question = await AiVideoQuestion.findOne({ question: data.question.trim() });
+  let question = await AiVideoQuestion.findOne({
+    question: data.question.trim(),
+  });
   if (!question) {
     question = await AiVideoQuestion.create({ question: data.question.trim() });
   }
@@ -54,7 +56,9 @@ const createVideo = async (data) => {
 };
 
 const getVideos = async (query = {}) => {
-  const videos = await AiVideo.find(query).populate('questionId').sort({ createdAt: -1 });
+  const videos = await AiVideo.find(query)
+    .populate('questionId')
+    .sort({ createdAt: -1 });
   return videos;
 };
 
@@ -70,9 +74,13 @@ const updateVideoById = async (id, data) => {
   const video = await getVideoById(id);
   let questionId = video.questionId;
   if (data.question) {
-    let question = await AiVideoQuestion.findOne({ question: data.question.trim() });
+    let question = await AiVideoQuestion.findOne({
+      question: data.question.trim(),
+    });
     if (!question) {
-      question = await AiVideoQuestion.create({ question: data.question.trim() });
+      question = await AiVideoQuestion.create({
+        question: data.question.trim(),
+      });
     }
     questionId = question._id;
   }
