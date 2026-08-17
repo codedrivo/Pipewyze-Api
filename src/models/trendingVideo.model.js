@@ -27,6 +27,10 @@ const trendingVideoSchema = new mongoose.Schema(
       enum: ['apprentice', 'licensed-plumber'],
       default: 'apprentice',
     },
+    isAiVideo: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,
