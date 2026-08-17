@@ -23,15 +23,14 @@ io.on('connection', (socket) => {
 
   // Handle client joining a specific chat room
   socket.on('join_room', ({ roomId }) => {
+    if (!roomId) return;
     socket.join(roomId);
-    console.log(`Socket ${socket.id} joined room ${roomId}`);
   });
 
   // Handle client sending a message in a room
   socket.on('send_message', async ({ roomId, senderId, content }) => {
     try {
       if (!roomId || !senderId || !content) {
-        console.error('Invalid message details received');
         return;
       }
 
