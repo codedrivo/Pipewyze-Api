@@ -10,6 +10,8 @@ const config = require('./config/config');
 const User = require('./models/user.model');
 const Setting = require('./models/setting.model');
 const SettingModel = require('./models/setting.model');
+const ChatRoom = require('./models/chatRoom.model');
+const Message = require('./models/message.model');
 
 const usersInRoom = new Map();
 const groupAuctionState = new Map();
@@ -32,6 +34,41 @@ mongoose.connect(config.mongoose.url).then(() => {
 
   io.on('connection', (socket) => {
     console.log(`User connected: ${socket.id}`);
+
+    // --- Plumber Chat Handlers ---
+    socket.on('join_room', ({ roomId }) => {
+      if (!roomId) return;
+      socket.join(roomId);
+    });
+
+    socket.on('send_message', async ({ roomId, senderId, content }) => {
+      try {
+        if (!roomId || !senderId || !content) return;
+
+        // Save the message to DB
+        const message = await Message.create({
+          roomId,
+          senderId,
+          content,
+        });
+
+        // Update the last message in the room
+        await ChatRoom.findByIdAndUpdate(roomId, {
+          lastMessage: message._id,
+        });
+
+        // Populate sender details for the response
+        const populatedMessage = await message.populate(
+          'senderId',
+          'fullName profileimageurl',
+        );
+
+        // Broadcast the message to all clients in the room (including sender)
+        io.to(roomId).emit('new_message', populatedMessage);
+      } catch (error) {
+        console.error('Error handling send_message socket event:', error);
+      }
+    });
 
     socket.on('joinRoom', async ({ userId, groupId }) => {
       if (!userId || !groupId) return;
