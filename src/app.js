@@ -46,6 +46,7 @@ const allowedOrigins = [
   'https://admin.pipewyze.com',
   'https://pipewyze.com',
   'https://api-pipewyze.codedrivo.com',
+  'https://admin-pipewyze.codedrivo.com',
 ];
 
 app.use(
