@@ -83,6 +83,16 @@ mongoose.connect(config.mongoose.url).then(() => {
       socket.join(roomId);
 
       try {
+        // Mark existing messages sent by counterpart as read
+        if (userId) {
+          await Message.updateMany(
+            { roomId, senderId: { $ne: userId }, read: false },
+            { $set: { read: true } }
+          );
+          // Broadcast that messages in the room have been read by this user
+          socket.to(roomId).emit('messages_read', { roomId, readerId: userId });
+        }
+
         // Fetch messages for this room
         const messages = await Message.find({ roomId })
           .populate('senderId', 'fullName profileimageurl')

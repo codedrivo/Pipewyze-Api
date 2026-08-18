@@ -74,6 +74,14 @@ const getMyChatRooms = catchAsync(async (req, res) => {
     .skip(skip)
     .limit(limit);
 
+  if (roomsList.length > 0) {
+    const roomIds = roomsList.map((room) => room._id);
+    await Message.updateMany(
+      { roomId: { $in: roomIds }, senderId: { $ne: userId }, read: false },
+      { $set: { read: true } },
+    );
+  }
+
   const formattedRooms = roomsList
     .map((room) => {
       // Determine the counterpart participant
@@ -102,12 +110,18 @@ const getMyChatRooms = catchAsync(async (req, res) => {
               content: room.lastMessage.content || '',
               senderId: room.lastMessage.senderId,
               createdAt: room.lastMessage.createdAt,
-              read: room.lastMessage.read || false,
+              read:
+                room.lastMessage.senderId.toString() === userId.toString()
+                  ? room.lastMessage.read || false
+                  : true,
             }
           : null,
       };
     })
-    .filter((room) => room.lastMessage !== null && room.lastMessage.content.trim() !== '');
+    .filter(
+      (room) =>
+        room.lastMessage !== null && room.lastMessage.content.trim() !== '',
+    );
 
   res.status(200).send({
     status: 200,
