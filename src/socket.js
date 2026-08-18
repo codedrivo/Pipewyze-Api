@@ -40,9 +40,9 @@ io.on('connection', (socket) => {
   });
 
   // Handle client sending a message in a room
-  socket.on('send_message', async ({ roomId, senderId, content }) => {
+  socket.on('send_message', async ({ roomId, senderId, content, fileUrl, fileType }) => {
     try {
-      if (!roomId || !senderId || !content) {
+      if (!roomId || !senderId || (!content && !fileUrl)) {
         return;
       }
 
@@ -82,6 +82,8 @@ io.on('connection', (socket) => {
         roomId,
         senderId,
         content,
+        fileUrl,
+        fileType,
       });
 
       // Update the last message in the room
