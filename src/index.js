@@ -56,6 +56,11 @@ mongoose.connect(config.mongoose.url).then(() => {
     // Automatically join the socket to user's chat rooms on connection asynchronously
     const userId = socket.handshake.query.userId;
     if (userId) {
+      // Set user online state in DB
+      User.findByIdAndUpdate(userId, { isOnline: true }).exec().catch(err => console.error(err));
+      // Broadcast status changed to everyone
+      io.emit('user_status_changed', { userId, isOnline: true });
+
       ChatRoom.find({
         $or: [
           { homeOwnerId: userId },
@@ -85,6 +90,16 @@ mongoose.connect(config.mongoose.url).then(() => {
 
         // Send the message history ONLY to the socket that just joined (one-to-one)
         socket.emit('message_history', messages);
+
+        // Fetch other participant's status and emit it to the user who joined
+        const room = await ChatRoom.findById(roomId);
+        if (room && userId) {
+          const counterpartId = room.homeOwnerId.toString() === userId ? room.plumberId : room.homeOwnerId;
+          const counterpartUser = await User.findById(counterpartId);
+          if (counterpartUser) {
+            socket.emit('user_status_changed', { userId: counterpartId.toString(), isOnline: counterpartUser.isOnline });
+          }
+        }
       } catch (error) {
         console.error('Error fetching room message history:', error);
       }
@@ -368,7 +383,17 @@ mongoose.connect(config.mongoose.url).then(() => {
       }
     });
 
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
+      // Check if the user has other active connections (e.g. other tabs/devices)
+      if (userId) {
+        const sockets = await io.fetchSockets();
+        const hasOtherSockets = sockets.some(s => s.handshake.query.userId === userId && s.id !== socket.id);
+        if (!hasOtherSockets) {
+          User.findByIdAndUpdate(userId, { isOnline: false }).exec().catch(err => console.error(err));
+          io.emit('user_status_changed', { userId, isOnline: false });
+        }
+      }
+
       for (const [groupId, groupMap] of usersInRoom.entries()) {
         for (const [userId, userEntry] of groupMap.entries()) {
           if (userEntry.socketIds.includes(socket.id)) {
