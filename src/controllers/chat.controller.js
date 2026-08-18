@@ -29,8 +29,8 @@ const initChatRoom = catchAsync(async (req, res) => {
 
   // Populate info
   room = await room.populate([
-    { path: 'homeOwnerId', select: 'fullName profileimageurl' },
-    { path: 'plumberId', select: 'fullName profileimageurl' },
+    { path: 'homeOwnerId', select: 'fullName profileimageurl isOnline' },
+    { path: 'plumberId', select: 'fullName profileimageurl isOnline' },
     { path: 'lastMessage' },
   ]);
 
@@ -67,8 +67,8 @@ const getMyChatRooms = catchAsync(async (req, res) => {
   const hasNextPage = page < totalPages;
 
   const roomsList = await ChatRoom.find(query)
-    .populate('homeOwnerId', 'fullName profileimageurl')
-    .populate('plumberId', 'fullName profileimageurl')
+    .populate('homeOwnerId', 'fullName profileimageurl isOnline')
+    .populate('plumberId', 'fullName profileimageurl isOnline')
     .populate('lastMessage')
     .sort({ updatedAt: -1 })
     .skip(skip)
@@ -94,6 +94,7 @@ const getMyChatRooms = catchAsync(async (req, res) => {
               id: participantUser._id,
               name: participantUser.fullName || '',
               profileImageUrl: participantUser.profileimageurl || '',
+              isOnline: participantUser.isOnline || false,
             }
           : null,
         lastMessage: room.lastMessage
