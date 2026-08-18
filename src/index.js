@@ -52,9 +52,9 @@ mongoose.connect(config.mongoose.url).then(() => {
       socket.join(roomId);
     });
 
-    socket.on('send_message', async ({ roomId, senderId, content }) => {
+    socket.on('send_message', async ({ roomId, senderId, content, fileUrl, fileType }) => {
       try {
-        if (!roomId || !senderId || !content) return;
+        if (!roomId || !senderId || (!content && !fileUrl)) return;
 
         // Check if room exists
         let room = await ChatRoom.findById(roomId);
@@ -92,6 +92,8 @@ mongoose.connect(config.mongoose.url).then(() => {
           roomId,
           senderId,
           content,
+          fileUrl,
+          fileType,
         });
 
         // Update the last message in the room
