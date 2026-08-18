@@ -47,27 +47,80 @@ const getMyChatRooms = catchAsync(async (req, res) => {
   const userId = req.user._id;
   const role = req.user.role;
 
-  let query = {};
+  let query = { lastMessage: { $exists: true, $ne: null } };
   if (role === 'home-owner') {
-    query = { homeOwnerId: userId };
+    query.homeOwnerId = userId;
   } else if (role === 'licensed-plumber') {
-    query = { plumberId: userId };
+    query.plumberId = userId;
   } else if (role === 'admin') {
     // Admins can see all chats
-    query = {};
   } else {
     throw new ApiError('Unauthorized role for accessing chat rooms', 403);
   }
 
-  const rooms = await ChatRoom.find(query)
+  const page = parseInt(req.query.page, 10) || 1;
+  const limit = parseInt(req.query.limit, 10) || 20;
+  const skip = (page - 1) * limit;
+
+  const total = await ChatRoom.countDocuments(query);
+  const totalPages = Math.ceil(total / limit) || 1;
+  const hasNextPage = page < totalPages;
+
+  const roomsList = await ChatRoom.find(query)
     .populate('homeOwnerId', 'fullName profileimageurl')
     .populate('plumberId', 'fullName profileimageurl')
     .populate('lastMessage')
-    .sort({ updatedAt: -1 });
+    .sort({ updatedAt: -1 })
+    .skip(skip)
+    .limit(limit);
+
+  const formattedRooms = roomsList
+    .map((room) => {
+      // Determine the counterpart participant
+      let participantUser = null;
+      if (role === 'home-owner') {
+        participantUser = room.plumberId;
+      } else if (role === 'licensed-plumber') {
+        participantUser = room.homeOwnerId;
+      } else {
+        // Admin fallback uses plumberId if available, else homeOwnerId
+        participantUser = room.plumberId || room.homeOwnerId;
+      }
+
+      return {
+        id: room._id,
+        participant: participantUser
+          ? {
+              id: participantUser._id,
+              name: participantUser.fullName || '',
+              profileImageUrl: participantUser.profileimageurl || '',
+            }
+          : null,
+        lastMessage: room.lastMessage
+          ? {
+              content: room.lastMessage.content || '',
+              senderId: room.lastMessage.senderId,
+              createdAt: room.lastMessage.createdAt,
+              read: room.lastMessage.read || false,
+            }
+          : null,
+      };
+    })
+    .filter((room) => room.lastMessage !== null && room.lastMessage.content.trim() !== '');
 
   res.status(200).send({
+    status: 200,
     message: 'Chat rooms retrieved successfully',
-    rooms,
+    data: {
+      rooms: formattedRooms,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+        hasNextPage,
+      },
+    },
   });
 });
 
