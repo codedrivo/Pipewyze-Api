@@ -22,25 +22,45 @@ app.use(bodyParser.urlencoded({ extended: false }));
 io.on('connection', (socket) => {
   console.log('a user is connected:', socket.id);
 
-  // Automatically join the socket to all existing chat rooms on connection asynchronously
-  ChatRoom.find({})
-    .then((rooms) => {
-      for (const room of rooms) {
-        socket.join(room._id.toString());
-      }
+  // Automatically join the socket to user's chat rooms on connection asynchronously
+  const userId = socket.handshake.query.userId;
+  if (userId) {
+    ChatRoom.find({
+      $or: [
+        { homeOwnerId: userId },
+        { plumberId: userId }
+      ]
     })
-    .catch((error) => {
-      console.error('Error auto-joining rooms on connection:', error);
-    });
+      .then((rooms) => {
+        for (const room of rooms) {
+          socket.join(room._id.toString());
+        }
+      })
+      .catch((error) => {
+        console.error('Error auto-joining rooms on connection:', error);
+      });
+  }
 
   // Handle client joining a specific chat room
-  socket.on('join_room', ({ roomId }) => {
+  socket.on('join_room', async ({ roomId }) => {
     if (!roomId) return;
     socket.join(roomId);
+
+    try {
+      // Fetch messages for this room
+      const messages = await Message.find({ roomId })
+        .populate('senderId', 'fullName profileimageurl')
+        .sort({ createdAt: 1 }); // Sort chronologically
+
+      // Send the message history ONLY to the socket that just joined (one-to-one)
+      socket.emit('message_history', messages);
+    } catch (error) {
+      console.error('Error fetching room message history:', error);
+    }
   });
 
   // Handle client sending a message in a room
-  socket.on('send_message', async ({ roomId, senderId, content, fileUrl, fileType }) => {
+  socket.on('send_message', async ({ roomId, senderId, receiverId, content, fileUrl, fileType }) => {
     try {
       if (!roomId || !senderId || (!content && !fileUrl)) {
         return;
@@ -49,9 +69,17 @@ io.on('connection', (socket) => {
       // Check if room exists
       let room = await ChatRoom.findById(roomId);
       if (!room) {
-        // Find a licensed plumber to associate with the room
-        const plumber = await User.findOne({ role: 'licensed-plumber' });
-        const plumberId = plumber ? plumber._id : '6a6b3a906da2f3f9a768df01'; // Default fallback ID if none exists
+        let plumberId = receiverId;
+        if (!plumberId) {
+          // Find a licensed plumber to associate with the room
+          const plumber = await User.findOne({ role: 'licensed-plumber' });
+          plumberId = plumber ? plumber._id : null;
+        }
+
+        if (!plumberId) {
+          console.error(`Validation Failed: Cannot dynamically create room ${roomId} without a plumberId.`);
+          return;
+        }
         
         room = await ChatRoom.create({
           _id: roomId,
@@ -76,6 +104,9 @@ io.on('connection', (socket) => {
         );
         return;
       }
+
+      // Auto-join the sender to the room channel so they can receive future broadcasts/replies
+      socket.join(roomId);
 
       // Save the message to DB
       const message = await Message.create({
