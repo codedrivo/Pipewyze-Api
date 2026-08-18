@@ -37,6 +37,7 @@ const envVarsSchema = Joi.object()
     AWS_REGION: Joi.string().optional(),
     S3_BUCKET_PATH: Joi.string().optional(),
     AWS_CLOUDFRONT_URL: Joi.string().optional(),
+    CHAT_ROOM_CLEANUP_MINUTES: Joi.number().default(5),
   })
   .unknown();
 
@@ -81,4 +82,5 @@ module.exports = {
     S3_BUCKET_PATH: envVars.S3_BUCKET_PATH,
     cloudfrontUrl: envVars.AWS_CLOUDFRONT_URL,
   },
+  chatRoomCleanupMinutes: envVars.CHAT_ROOM_CLEANUP_MINUTES,
 };
