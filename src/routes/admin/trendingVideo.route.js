@@ -20,10 +20,7 @@ router
 
 router
   .route('/:id')
-  .get(
-    validator.params(validationSchema.singleId),
-    controller.getTrendingVideo,
-  )
+  .get(validator.params(validationSchema.singleId), controller.getTrendingVideo)
   .patch(
     upload.single('thumbnail'),
     validator.params(validationSchema.singleId),

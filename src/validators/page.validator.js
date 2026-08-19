@@ -5,34 +5,43 @@ const contactForm = Joi.object({
   firstName: Joi.string()
     .trim()
     .regex(/^[A-Za-z]+$/)
-    .required()
+    .optional()
     .messages({
-      'any.required': 'First name is required',
-      'string.empty': 'First name is required',
-      'string.pattern.base': 'Only alphabets are allowed in first name',
+      'string.pattern.base': 'First name can only contain letters',
     }),
   lastName: Joi.string()
     .trim()
     .regex(/^[A-Za-z]+$/)
-    .required()
+    .optional()
     .messages({
-      'any.required': 'Last name is required',
-      'string.empty': 'Last name is required',
-      'string.pattern.base': 'Only alphabets are allowed in last name',
+      'string.pattern.base': 'Last name can only contain letters',
+    }),
+  fullName: Joi.string()
+    .trim()
+    .regex(/^[A-Za-z\s]+$/)
+    .optional()
+    .messages({
+      'string.pattern.base': 'Full name can only contain letters and spaces',
     }),
   email: email.required().messages({
     'any.required': 'Email is required',
     'string.empty': 'Email is required',
+    'string.email': 'Please enter a valid email address',
   }),
-  phone: Joi.string().trim().required().messages({
-    'any.required': 'Phone number is required',
-    'string.empty': 'Phone number is required',
-  }),
+  phone: Joi.string()
+    .trim()
+    .regex(/^\d{10}$/)
+    .required()
+    .messages({
+      'any.required': 'Phone number is required',
+      'string.empty': 'Phone number is required',
+      'string.pattern.base': 'Phone number must be exactly 10 digits',
+    }),
   message: Joi.string().trim().required().messages({
     'any.required': 'Message is required',
     'string.empty': 'Message is required',
   }),
-});
+}).or('firstName', 'fullName');
 
 const singleId = Joi.object({
   id: Joi.string().required(),

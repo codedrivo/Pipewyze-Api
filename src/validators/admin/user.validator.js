@@ -28,6 +28,9 @@ const addUser = Joi.object({
     .required(),
   password: Joi.string().required(),
   profileimageurl: Joi.optional(),
+  latitude: Joi.number().optional().allow(null, ''),
+  longitude: Joi.number().optional().allow(null, ''),
+  address: Joi.string().optional().allow('', null),
 });
 
 const updateuser = Joi.object({
@@ -37,6 +40,9 @@ const updateuser = Joi.object({
     .valid('admin', 'home-owner', 'apprentice', 'licensed-plumber')
     .required(),
   profileimageurl: Joi.optional(),
+  latitude: Joi.number().optional().allow(null, ''),
+  longitude: Joi.number().optional().allow(null, ''),
+  address: Joi.string().optional().allow('', null),
 });
 
 const singleId = Joi.object({

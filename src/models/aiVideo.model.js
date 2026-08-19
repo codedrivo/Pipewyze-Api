@@ -1,8 +1,13 @@
 const mongoose = require('mongoose');
 const { toJSON } = require('./plugins');
 
-const trendingVideoSchema = new mongoose.Schema(
+const aiVideoSchema = new mongoose.Schema(
   {
+    questionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'AiVideoQuestion',
+      required: true,
+    },
     title: {
       type: String,
       required: true,
@@ -27,18 +32,14 @@ const trendingVideoSchema = new mongoose.Schema(
       enum: ['apprentice', 'licensed-plumber'],
       default: 'apprentice',
     },
-    isAiVideo: {
-      type: Boolean,
-      default: false,
-    },
   },
   {
     timestamps: true,
   },
 );
 
-trendingVideoSchema.plugin(toJSON);
+aiVideoSchema.plugin(toJSON);
 
-const TrendingVideo = mongoose.model('TrendingVideo', trendingVideoSchema);
+const AiVideo = mongoose.model('AiVideo', aiVideoSchema);
 
-module.exports = TrendingVideo;
+module.exports = AiVideo;

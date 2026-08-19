@@ -36,12 +36,22 @@ const escapeHtml = (value = '') =>
     .replace(/'/g, '&#39;');
 
 const normalizeContactData = (contactData = {}) => {
-  const firstName = String(
-    contactData.firstName || contactData.firstname || contactData.name || '',
+  let firstName = String(
+    contactData.firstName || contactData.firstname || '',
   ).trim();
-  const lastName = String(
+  let lastName = String(
     contactData.lastName || contactData.lastname || '',
   ).trim();
+  const fullName = String(
+    contactData.fullName || contactData.name || '',
+  ).trim();
+
+  if (!firstName && fullName) {
+    const parts = fullName.split(' ');
+    firstName = parts[0] || '';
+    lastName = parts.slice(1).join(' ') || '';
+  }
+
   const email = String(contactData.email || '').trim();
   const phone = String(
     contactData.phone || contactData.phoneNumber || contactData.mobile || '',

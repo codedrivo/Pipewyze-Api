@@ -55,6 +55,14 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    isOnline: {
+      type: Boolean,
+      default: false,
+    },
+    fcmTokens: {
+      type: [String],
+      default: [],
+    },
   },
   {
     timestamps: true,

@@ -23,7 +23,11 @@ app.use(morgan.errorHandler);
 app.use(express.json());
 
 // set security headers automatically
-app.use(helmet());
+app.use(
+  helmet({
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  }),
+);
 
 // gzip compress response
 app.use(compression());
@@ -33,20 +37,38 @@ app.use(xss());
 app.use(mongoSanitize());
 
 // enable cors
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:5000',
+  'http://localhost:4000',
+  'http://localhost:6000',
+  'http://localhost:5174',
+  'https://admin.pipewyze.com',
+  'https://pipewyze.com',
+  'https://api-pipewyze.codedrivo.com',
+  'https://admin-pipewyze.codedrivo.com',
+];
+
 app.use(
   cors({
-    origin: [
-      'http://localhost:5173',
-      'http://localhost:5000',
-      'http://localhost:4000',
-      'http://localhost:6000',
-      '*',
-      'http://localhost:5174',
-      'http://localhost:5000',
-      'https://admin.pipewyze.com',
-      'https://pipewyze.com',
-      'https://api-pipewyze.codedrivo.com',
-    ],
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps or curl)
+      if (!origin) return callback(null, true);
+
+      if (
+        allowedOrigins.indexOf(origin) !== -1 ||
+        origin.startsWith('http://localhost:') ||
+        origin.startsWith('http://127.0.0.1:')
+      ) {
+        callback(null, true);
+      } else {
+        console.error(
+          `[CORS Blocked] The origin "${origin}" is not allowed by CORS configurations in app.js`,
+        );
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    credentials: true,
   }),
 );
 
@@ -64,6 +86,11 @@ if (config.env === 'dev') {
 }
 
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.get('/', (req, res) => {
+  res
+    .status(200)
+    .json({ status: 'success', message: 'PipeWyze API is running' });
+});
 app.use('/', appRouter);
 app.use('/v1', appRouter);
 

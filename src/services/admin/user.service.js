@@ -1,8 +1,8 @@
+/* global Invitations */
 const User = require('../../models/user.model');
 const ApiError = require('../../helpers/apiErrorConverter');
 
 const mongoose = require('mongoose');
-const { http } = require('winston');
 
 const userListFind = async (
   id,
@@ -53,7 +53,22 @@ const userListFind = async (
 };
 
 const addUser = async (userData) => {
-  const user = await User.create(userData);
+  const { latitude, longitude, address, ...restData } = userData;
+  const user = await User.create(restData);
+  if (user.role === 'licensed-plumber') {
+    const LicensedPlumberProfile = require('../../models/licensedPlumberProfile.model');
+    const profileData = {
+      userId: user._id,
+      address: address || '',
+    };
+    if (latitude && longitude) {
+      profileData.location = {
+        type: 'Point',
+        coordinates: [parseFloat(longitude) || 0, parseFloat(latitude) || 0],
+      };
+    }
+    await LicensedPlumberProfile.create(profileData);
+  }
   return user;
 };
 
@@ -64,15 +79,61 @@ const getUserById = (id) => {
 const editUser = async (id) => {
   try {
     const user = await getUserById(id);
-
-    return user;
+    if (!user) return null;
+    const userJson = user.toJSON();
+    if (user.role === 'licensed-plumber') {
+      const LicensedPlumberProfile = require('../../models/licensedPlumberProfile.model');
+      const profile = await LicensedPlumberProfile.findOne({
+        userId: user._id,
+      });
+      if (profile) {
+        userJson.address = profile.address || '';
+        if (profile.location && profile.location.coordinates) {
+          userJson.longitude = profile.location.coordinates[0];
+          userJson.latitude = profile.location.coordinates[1];
+        }
+      }
+    }
+    return userJson;
   } catch (e) {
     throw new ApiError(e.message, 404);
   }
 };
 
 const updateUser = async (id, data) => {
-  return User.findByIdAndUpdate({ _id: new mongoose.Types.ObjectId(id) }, data);
+  const { latitude, longitude, address, ...restData } = data;
+  const user = await User.findByIdAndUpdate(
+    { _id: new mongoose.Types.ObjectId(id) },
+    restData,
+    { new: true },
+  );
+  if (user && user.role === 'licensed-plumber') {
+    const LicensedPlumberProfile = require('../../models/licensedPlumberProfile.model');
+    let profile = await LicensedPlumberProfile.findOne({ userId: user._id });
+    if (!profile) {
+      profile = new LicensedPlumberProfile({ userId: user._id });
+    }
+    if (address !== undefined) {
+      profile.address = address;
+    }
+    if (latitude !== undefined && longitude !== undefined) {
+      if (
+        latitude === '' ||
+        longitude === '' ||
+        latitude === null ||
+        longitude === null
+      ) {
+        profile.location = undefined;
+      } else {
+        profile.location = {
+          type: 'Point',
+          coordinates: [parseFloat(longitude) || 0, parseFloat(latitude) || 0],
+        };
+      }
+    }
+    await profile.save();
+  }
+  return user;
 };
 
 const deleteUser = async (id) => {

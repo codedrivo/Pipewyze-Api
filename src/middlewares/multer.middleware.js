@@ -69,7 +69,25 @@ const customFields = (fieldsArray) => {
   };
 };
 
+const chatUpload = multer({
+  storage: s3Storage,
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB limit for videos/photos in chat
+  },
+});
+
+const customChatSingle = (fieldName) => {
+  const middleware = chatUpload.single(fieldName);
+  return (req, res, next) => {
+    middleware(req, res, (err) => {
+      if (err) return next(err);
+      next();
+    });
+  };
+};
+
 module.exports = {
   single: customSingle,
   fields: customFields,
+  chatSingle: customChatSingle,
 };

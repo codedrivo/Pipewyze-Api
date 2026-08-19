@@ -22,6 +22,9 @@ const createLicensedPlumber = Joi.object({
   yearsOfService: Joi.string().optional().allow(''),
   serviceLocations: Joi.array().items(Joi.string()).optional(),
   servicesOffered: Joi.array().items(Joi.string()).optional(),
+  latitude: Joi.number().optional().allow(null, ''),
+  longitude: Joi.number().optional().allow(null, ''),
+  address: Joi.string().optional().allow('', null),
 });
 
 const updateLicensedPlumber = Joi.object({
@@ -31,6 +34,9 @@ const updateLicensedPlumber = Joi.object({
   yearsOfService: Joi.string().optional().allow(''),
   serviceLocations: Joi.array().items(Joi.string()).optional(),
   servicesOffered: Joi.array().items(Joi.string()).optional(),
+  latitude: Joi.number().optional().allow(null, ''),
+  longitude: Joi.number().optional().allow(null, ''),
+  address: Joi.string().optional().allow('', null),
 });
 
 module.exports = {

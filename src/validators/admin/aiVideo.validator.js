@@ -1,6 +1,15 @@
 const Joi = require('joi');
 
-const createTrendingVideo = Joi.object({
+const createQuestion = Joi.object({
+  question: Joi.string().required(),
+});
+
+const updateQuestion = Joi.object({
+  question: Joi.string().required(),
+});
+
+const createVideo = Joi.object({
+  question: Joi.string().required(),
   title: Joi.string().required(),
   videoUrl: Joi.string().required(),
   description: Joi.string().allow('').optional(),
@@ -8,10 +17,10 @@ const createTrendingVideo = Joi.object({
   targetAudience: Joi.string()
     .valid('apprentice', 'licensed-plumber')
     .optional(),
-  isAiVideo: Joi.boolean().optional(),
 });
 
-const updateTrendingVideo = Joi.object({
+const updateVideo = Joi.object({
+  question: Joi.string().optional(),
   title: Joi.string().optional(),
   videoUrl: Joi.string().optional(),
   description: Joi.string().allow('').optional(),
@@ -19,7 +28,6 @@ const updateTrendingVideo = Joi.object({
   targetAudience: Joi.string()
     .valid('apprentice', 'licensed-plumber')
     .optional(),
-  isAiVideo: Joi.boolean().optional(),
 });
 
 const singleId = Joi.object({
@@ -27,7 +35,9 @@ const singleId = Joi.object({
 });
 
 module.exports = {
-  createTrendingVideo,
-  updateTrendingVideo,
+  createQuestion,
+  updateQuestion,
+  createVideo,
+  updateVideo,
   singleId,
 };

@@ -1,8 +1,34 @@
 const TrendingVideo = require('../../models/trendingVideo.model');
 const ApiError = require('../../helpers/apiErrorConverter');
+const notificationService = require('../notification.service');
 
 const createTrendingVideo = async (data) => {
   const video = await TrendingVideo.create(data);
+
+  // Send push notification to apprentice role
+  notificationService
+    .sendToRole(
+      'apprentice',
+      'New Trending Video Added',
+      `A new trending video "${video.title}" is now available.`,
+      { videoId: video._id.toString() },
+    )
+    .catch((err) =>
+      console.error('Failed sending notification to apprentice:', err.message),
+    );
+
+  // Send push notification to licensed-plumber role
+  notificationService
+    .sendToRole(
+      'licensed-plumber',
+      'New Trending Video Added',
+      `A new trending video "${video.title}" is now available.`,
+      { videoId: video._id.toString() },
+    )
+    .catch((err) =>
+      console.error('Failed sending notification to plumber:', err.message),
+    );
+
   return video;
 };
 
