@@ -87,7 +87,9 @@ if (config.env === 'dev') {
 
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.get('/', (req, res) => {
-  res.status(200).json({ status: 'success', message: 'PipeWyze API is running' });
+  res
+    .status(200)
+    .json({ status: 'success', message: 'PipeWyze API is running' });
 });
 app.use('/', appRouter);
 app.use('/v1', appRouter);

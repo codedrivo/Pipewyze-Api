@@ -108,6 +108,8 @@ const getMyChatRooms = catchAsync(async (req, res) => {
         lastMessage: room.lastMessage
           ? {
               content: room.lastMessage.content || '',
+              fileUrl: room.lastMessage.fileUrl || null,
+              fileType: room.lastMessage.fileType || null,
               senderId: room.lastMessage.senderId,
               createdAt: room.lastMessage.createdAt,
               read:
@@ -118,10 +120,14 @@ const getMyChatRooms = catchAsync(async (req, res) => {
           : null,
       };
     })
-    .filter(
-      (room) =>
-        room.lastMessage !== null && room.lastMessage.content.trim() !== '',
-    );
+    .filter((room) => {
+      if (!room.lastMessage) return false;
+      const content = room.lastMessage.content
+        ? room.lastMessage.content.trim()
+        : '';
+      const hasFile = !!room.lastMessage.fileUrl;
+      return content !== '' || hasFile;
+    });
 
   res.status(200).send({
     status: 200,
