@@ -105,19 +105,31 @@ const getMyChatRooms = catchAsync(async (req, res) => {
               isOnline: participantUser.isOnline || false,
             }
           : null,
-        lastMessage: room.lastMessage
-          ? {
-              content: room.lastMessage.content || '',
-              fileUrl: room.lastMessage.fileUrl || null,
-              fileType: room.lastMessage.fileType || null,
-              senderId: room.lastMessage.senderId,
-              createdAt: room.lastMessage.createdAt,
-              read:
-                room.lastMessage.senderId.toString() === userId.toString()
-                  ? room.lastMessage.read || false
-                  : true,
+        lastMessage: (() => {
+          if (!room.lastMessage) return null;
+          let content = room.lastMessage.content
+            ? room.lastMessage.content.trim()
+            : '';
+          if (content === '' && room.lastMessage.fileUrl) {
+            const fileUrl = room.lastMessage.fileUrl;
+            let fileName = fileUrl.substring(fileUrl.lastIndexOf('/') + 1);
+            if (fileName) {
+              fileName = decodeURIComponent(fileName.split('?')[0]);
             }
-          : null,
+            content = fileName || 'File';
+          }
+          return {
+            content,
+            fileUrl: room.lastMessage.fileUrl || null,
+            fileType: room.lastMessage.fileType || null,
+            senderId: room.lastMessage.senderId,
+            createdAt: room.lastMessage.createdAt,
+            read:
+              room.lastMessage.senderId.toString() === userId.toString()
+                ? room.lastMessage.read || false
+                : true,
+          };
+        })(),
       };
     })
     .filter((room) => {
