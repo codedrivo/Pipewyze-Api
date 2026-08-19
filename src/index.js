@@ -17,7 +17,9 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const tempDir = path.join(__dirname, 'temp_uploads');
+const os = require('os');
+
+const tempDir = path.join(os.tmpdir(), 'pipewyze_uploads');
 if (!fs.existsSync(tempDir)) {
   fs.mkdirSync(tempDir, { recursive: true });
 }
