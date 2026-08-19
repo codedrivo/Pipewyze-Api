@@ -6,6 +6,7 @@ const config = require('./config/config');
 const ChatRoom = require('./models/chatRoom.model');
 const Message = require('./models/message.model');
 const User = require('./models/user.model');
+const notificationService = require('./services/notification.service');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const fs = require('fs');
 const path = require('path');
@@ -94,6 +95,7 @@ io.on('connection', (socket) => {
     // Set user online state in DB
     User.findByIdAndUpdate(userId, { isOnline: true })
       .exec()
+      .then(() => console.log(`User connected & marked online: ${userId}`))
       .catch((err) => console.error(err));
     // Broadcast status changed to everyone
     io.emit('user_status_changed', { userId, isOnline: true });
@@ -112,19 +114,31 @@ io.on('connection', (socket) => {
   }
 
   // Handle client joining a specific chat room
-  socket.on('join_room', async ({ roomId }) => {
+  socket.on('join_room', async ({ roomId, userId: payloadUserId }) => {
     if (!roomId) return;
     socket.join(roomId);
 
+    const activeUserId = payloadUserId || userId;
+
     try {
-      // Mark existing messages sent by counterpart as read
-      if (userId) {
+      if (activeUserId) {
+        // Set user online state in DB and broadcast status
+        await User.findByIdAndUpdate(activeUserId, { isOnline: true });
+        console.log(`User joined room & marked online: ${activeUserId}`);
+        io.emit('user_status_changed', {
+          userId: activeUserId,
+          isOnline: true,
+        });
+
+        // Mark existing messages sent by counterpart as read
         await Message.updateMany(
-          { roomId, senderId: { $ne: userId }, read: false },
+          { roomId, senderId: { $ne: activeUserId }, read: false },
           { $set: { read: true } },
         );
         // Broadcast that messages in the room have been read by this user
-        socket.to(roomId).emit('messages_read', { roomId, readerId: userId });
+        socket
+          .to(roomId)
+          .emit('messages_read', { roomId, readerId: activeUserId });
       }
 
       // Fetch messages for this room
@@ -137,9 +151,9 @@ io.on('connection', (socket) => {
 
       // Fetch other participant's status and emit it to the user who joined
       const room = await ChatRoom.findById(roomId);
-      if (room && userId) {
+      if (room && activeUserId) {
         const counterpartId =
-          room.homeOwnerId.toString() === userId
+          room.homeOwnerId.toString() === activeUserId.toString()
             ? room.plumberId
             : room.homeOwnerId;
         const counterpartUser = await User.findById(counterpartId);
@@ -250,11 +264,22 @@ io.on('connection', (socket) => {
             } else {
               finalFileUrl = `https://${config.s3.S3_BUCKET_PATH}.s3.${config.s3.region}.amazonaws.com/${uniqueKey}`;
             }
+          }
+        }
 
-            if (!finalContent) {
-              finalContent = `Sent a file: ${fileName || 'file.' + extension}`;
+        if ((!finalContent || finalContent.trim() === '') && finalFileUrl) {
+          let extractedFileName = fileName;
+          if (!extractedFileName) {
+            extractedFileName = finalFileUrl.substring(
+              finalFileUrl.lastIndexOf('/') + 1,
+            );
+            if (extractedFileName) {
+              extractedFileName = decodeURIComponent(
+                extractedFileName.split('?')[0],
+              );
             }
           }
+          finalContent = extractedFileName || 'File';
         }
 
         // Save the message to DB
@@ -279,6 +304,29 @@ io.on('connection', (socket) => {
 
         // Broadcast the message to all clients in the room (including sender)
         io.to(roomId).emit('new_message', populatedMessage);
+
+        // Send push notification to counterpart participant
+        const counterpartId =
+          room.homeOwnerId.toString() === senderId.toString()
+            ? room.plumberId
+            : room.homeOwnerId;
+
+        const senderUser = await User.findById(senderId);
+        const senderName = senderUser ? senderUser.fullName : 'Someone';
+
+        notificationService
+          .sendToUsers(
+            [counterpartId.toString()],
+            `New message from ${senderName}`,
+            message.content || 'Sent an attachment',
+            {
+              roomId: roomId.toString(),
+              messageId: message._id.toString(),
+            },
+          )
+          .catch((err) =>
+            console.error('Failed sending chat notification:', err.message),
+          );
       } catch (error) {
         console.error('Error handling send_message socket event:', error);
       }
@@ -607,7 +655,7 @@ io.on('connection', (socket) => {
               const message = await Message.create({
                 roomId: upload.roomId,
                 senderId: upload.senderId,
-                content: `Sent a file: ${upload.fileName}`,
+                content: upload.fileName,
                 fileUrl,
                 fileType: upload.fileType,
               });
@@ -626,6 +674,34 @@ io.on('connection', (socket) => {
                 uploadId,
                 messageId: message._id,
               });
+
+              const room = await ChatRoom.findById(upload.roomId);
+              if (room) {
+                const counterpartId =
+                  room.homeOwnerId.toString() === upload.senderId.toString()
+                    ? room.plumberId
+                    : room.homeOwnerId;
+
+                const senderUser = await User.findById(upload.senderId);
+                const senderName = senderUser ? senderUser.fullName : 'Someone';
+
+                notificationService
+                  .sendToUsers(
+                    [counterpartId.toString()],
+                    `New message from ${senderName}`,
+                    message.content || 'Sent a file',
+                    {
+                      roomId: upload.roomId.toString(),
+                      messageId: message._id.toString(),
+                    },
+                  )
+                  .catch((err) =>
+                    console.error(
+                      'Failed sending upload chat notification:',
+                      err.message,
+                    ),
+                  );
+              }
             } catch (err) {
               console.error('Error completing file upload:', err.message);
               handleFail(err.message || 'Failed to process completed file');
@@ -669,6 +745,9 @@ io.on('connection', (socket) => {
       if (!hasOtherSockets) {
         User.findByIdAndUpdate(userId, { isOnline: false })
           .exec()
+          .then(() =>
+            console.log(`User disconnected & marked offline: ${userId}`),
+          )
           .catch((err) => console.error(err));
         io.emit('user_status_changed', { userId, isOnline: false });
       }
