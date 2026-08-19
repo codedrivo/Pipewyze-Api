@@ -1,5 +1,6 @@
 const MaintenanceGuide = require('../../models/maintenanceGuide.model');
 const ApiError = require('../../helpers/apiErrorConverter');
+const notificationService = require('../notification.service');
 
 const parseGuideFields = (data) => {
   if (typeof data.checklist === 'string') {
@@ -32,6 +33,19 @@ const parseGuideFields = (data) => {
 const createMaintenanceGuide = async (data) => {
   parseGuideFields(data);
   const guide = await MaintenanceGuide.create(data);
+
+  // Send push notification to all licensed-plumbers
+  notificationService
+    .sendToRole(
+      'licensed-plumber',
+      'New Maintenance Guide Available',
+      `A new maintenance guide "${guide.title}" has been added by the Admin.`,
+      { guideId: guide._id.toString() },
+    )
+    .catch((err) =>
+      console.error('Failed sending notification to plumber:', err.message),
+    );
+
   return guide;
 };
 

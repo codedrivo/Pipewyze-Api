@@ -180,6 +180,40 @@ const addSupport = catchAsync(async (req, res) => {
   });
 });
 
+// Update FCM token
+const updateFcmToken = catchAsync(async (req, res, next) => {
+  const { token } = req.body;
+  const user = req.user;
+
+  if (!user.fcmTokens) {
+    user.fcmTokens = [];
+  }
+
+  if (!user.fcmTokens.includes(token)) {
+    user.fcmTokens.push(token);
+    await user.save();
+  }
+
+  res.status(200).json({
+    message: 'FCM Token registered successfully',
+  });
+});
+
+// Remove FCM token
+const removeFcmToken = catchAsync(async (req, res, next) => {
+  const { token } = req.body;
+  const user = req.user;
+
+  if (user.fcmTokens && user.fcmTokens.includes(token)) {
+    user.fcmTokens = user.fcmTokens.filter((t) => t !== token);
+    await user.save();
+  }
+
+  res.status(200).json({
+    message: 'FCM Token removed successfully',
+  });
+});
+
 module.exports = {
   deleteAccount,
   passwordChange,
@@ -189,4 +223,6 @@ module.exports = {
   addSupport,
   listusers,
   edituser,
+  updateFcmToken,
+  removeFcmToken,
 };

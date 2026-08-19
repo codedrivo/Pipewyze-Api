@@ -45,6 +45,18 @@ router.post(
   controller.addSupport,
 );
 
+router.post(
+  '/fcm-token',
+  validator.body(validationSchema.updateFcmToken),
+  controller.updateFcmToken,
+);
+
+router.delete(
+  '/fcm-token',
+  validator.body(validationSchema.updateFcmToken),
+  controller.removeFcmToken,
+);
+
 //router.get('/get-filter-types', filterController.getControllerUnickTypes);
 //router.get('/get-filter-names/:type', filterController.getDataByType);
 

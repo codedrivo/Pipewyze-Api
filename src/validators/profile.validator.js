@@ -51,6 +51,10 @@ const updateProfile = Joi.object({
   phone: phone,
 });
 
+const updateFcmToken = Joi.object({
+  token: Joi.string().required(),
+});
+
 module.exports = {
   passchange,
   notificationToggle,
@@ -58,4 +62,5 @@ module.exports = {
   support,
   singleId,
   updateProfile,
+  updateFcmToken,
 };

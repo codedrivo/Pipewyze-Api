@@ -62,7 +62,9 @@ app.use(
       ) {
         callback(null, true);
       } else {
-        console.error(`[CORS Blocked] The origin "${origin}" is not allowed by CORS configurations in app.js`);
+        console.error(
+          `[CORS Blocked] The origin "${origin}" is not allowed by CORS configurations in app.js`,
+        );
         callback(new Error('Not allowed by CORS'));
       }
     },
