@@ -24,8 +24,6 @@ const toJSON = (schema) => {
         delete ret._id;
       }
       delete ret.__v;
-      delete ret.createdAt;
-      delete ret.updatedAt;
 
       // Helper to recursively decode HTML entities in string values
       const cleanObjectStrings = (obj) => {

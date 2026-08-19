@@ -161,6 +161,12 @@ const getRoomMessages = catchAsync(async (req, res) => {
     throw new ApiError('Access denied to this chat room', 403);
   }
 
+  // Mark counterpart's messages in this room as read
+  await Message.updateMany(
+    { roomId, senderId: { $ne: req.user._id }, read: false },
+    { $set: { read: true } },
+  );
+
   const messages = await Message.find({ roomId })
     .sort({ createdAt: 1 })
     .populate('senderId', 'fullName profileimageurl');
