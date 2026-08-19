@@ -7,10 +7,15 @@ router.get(
   '/',
   auth(),
   catchAsync(async (req, res) => {
-    const { targetAudience } = req.query;
+    const { role } = req.user;
     const query = {};
-    if (targetAudience) {
-      query.targetAudience = targetAudience;
+    if (role === 'apprentice' || role === 'licensed-plumber') {
+      query.targetAudience = role;
+    } else {
+      const { targetAudience } = req.query;
+      if (targetAudience) {
+        query.targetAudience = targetAudience;
+      }
     }
     const videos = await service.getTrendingVideos(query);
     res.status(200).json({
