@@ -5,6 +5,7 @@ const ApiError = require('../../helpers/apiErrorConverter');
 require('../../models/essentialTool.model');
 require('../../models/maintenanceGuide.model');
 require('../../models/plumbingCode.model');
+require('../../models/trendingVideo.model');
 
 /**
  * Save a resource (EssentialTool, MaintenanceGuide, or PlumbingCode) for a user
