@@ -105,6 +105,7 @@ mongoose.connect(config.mongoose.url).then(() => {
     // Automatically join the socket to user's chat rooms on connection asynchronously
     const userId = socket.handshake.query.userId;
     if (userId) {
+      socket.userId = userId;
       // Set user online state in DB
       User.findByIdAndUpdate(userId, { isOnline: true })
         .exec()
@@ -126,12 +127,43 @@ mongoose.connect(config.mongoose.url).then(() => {
         });
     }
 
+    // Client can register their userId via this event after connecting
+    socket.on('user_connected', async ({ userId: connectedUserId }) => {
+      if (!connectedUserId) return;
+      socket.userId = connectedUserId;
+      try {
+        await User.findByIdAndUpdate(connectedUserId, { isOnline: true });
+        console.log(
+          `User connected (via event) & marked online: ${connectedUserId}`,
+        );
+        io.emit('user_status_changed', {
+          userId: connectedUserId,
+          isOnline: true,
+        });
+
+        const rooms = await ChatRoom.find({
+          $or: [
+            { homeOwnerId: connectedUserId },
+            { plumberId: connectedUserId },
+          ],
+        });
+        for (const room of rooms) {
+          socket.join(room._id.toString());
+        }
+      } catch (error) {
+        console.error('Error handling user_connected socket event:', error);
+      }
+    });
+
     // --- Plumber Chat Handlers ---
     socket.on('join_room', async ({ roomId, userId: payloadUserId }) => {
       if (!roomId) return;
       socket.join(roomId);
 
-      const activeUserId = payloadUserId || userId;
+      const activeUserId = payloadUserId || userId || socket.userId;
+      if (activeUserId) {
+        socket.userId = activeUserId;
+      }
 
       try {
         if (activeUserId) {
@@ -816,20 +848,29 @@ mongoose.connect(config.mongoose.url).then(() => {
     );
 
     socket.on('disconnect', async () => {
+      const activeUserId = socket.userId || userId;
       // Check if the user has other active connections (e.g. other tabs/devices)
-      if (userId) {
+      if (activeUserId) {
         const sockets = await io.fetchSockets();
         const hasOtherSockets = sockets.some(
-          (s) => s.handshake.query.userId === userId && s.id !== socket.id,
+          (s) =>
+            (s.handshake.query.userId === activeUserId ||
+              s.userId === activeUserId) &&
+            s.id !== socket.id,
         );
         if (!hasOtherSockets) {
-          User.findByIdAndUpdate(userId, { isOnline: false })
+          User.findByIdAndUpdate(activeUserId, { isOnline: false })
             .exec()
             .then(() =>
-              console.log(`User disconnected & marked offline: ${userId}`),
+              console.log(
+                `User disconnected & marked offline: ${activeUserId}`,
+              ),
             )
             .catch((err) => console.error(err));
-          io.emit('user_status_changed', { userId, isOnline: false });
+          io.emit('user_status_changed', {
+            userId: activeUserId,
+            isOnline: false,
+          });
         }
       }
 
