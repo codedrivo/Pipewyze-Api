@@ -1,5 +1,6 @@
 const EssentialTool = require('../../models/essentialTool.model');
 const ApiError = require('../../helpers/apiErrorConverter');
+const notificationService = require('../notification.service');
 
 const parseArrayFields = (data) => {
   const fields = ['bestUsedFor', 'howToUse', 'safetyTips'];
@@ -24,6 +25,22 @@ const parseArrayFields = (data) => {
 const createEssentialTool = async (data) => {
   parseArrayFields(data);
   const tool = await EssentialTool.create(data);
+
+  // Send push notification to all home-owners
+  notificationService
+    .sendToRole(
+      'home-owner',
+      'New Essential Tool Available',
+      `A new essential tool "${tool.name}" has been added by the Admin.`,
+      { toolId: tool._id.toString() },
+    )
+    .catch((err) =>
+      console.error(
+        'Failed sending notification on tool creation:',
+        err.message,
+      ),
+    );
+
   return tool;
 };
 

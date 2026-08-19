@@ -1,8 +1,24 @@
 const PlumbingCode = require('../../models/plumbingCode.model');
 const ApiError = require('../../helpers/apiErrorConverter');
+const notificationService = require('../notification.service');
 
 const createPlumbingCode = async (data) => {
   const code = await PlumbingCode.create(data);
+
+  // Send push notification to all licensed-plumbers
+  notificationService
+    .sendToRole(
+      'licensed-plumber',
+      'New Plumbing Code Added',
+      `A new plumbing code reference "${
+        code.title || code.section
+      }" has been added.`,
+      { codeId: code._id.toString() },
+    )
+    .catch((err) =>
+      console.error('Failed sending notification to plumber:', err.message),
+    );
+
   return code;
 };
 

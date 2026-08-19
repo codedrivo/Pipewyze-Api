@@ -103,15 +103,14 @@ mongoose.connect(config.mongoose.url).then(() => {
     const userId = socket.handshake.query.userId;
     if (userId) {
       // Set user online state in DB
-      User.findByIdAndUpdate(userId, { isOnline: true }).exec().catch(err => console.error(err));
+      User.findByIdAndUpdate(userId, { isOnline: true })
+        .exec()
+        .catch((err) => console.error(err));
       // Broadcast status changed to everyone
       io.emit('user_status_changed', { userId, isOnline: true });
 
       ChatRoom.find({
-        $or: [
-          { homeOwnerId: userId },
-          { plumberId: userId }
-        ]
+        $or: [{ homeOwnerId: userId }, { plumberId: userId }],
       })
         .then((rooms) => {
           for (const room of rooms) {
@@ -133,7 +132,7 @@ mongoose.connect(config.mongoose.url).then(() => {
         if (userId) {
           await Message.updateMany(
             { roomId, senderId: { $ne: userId }, read: false },
-            { $set: { read: true } }
+            { $set: { read: true } },
           );
           // Broadcast that messages in the room have been read by this user
           socket.to(roomId).emit('messages_read', { roomId, readerId: userId });
@@ -150,10 +149,16 @@ mongoose.connect(config.mongoose.url).then(() => {
         // Fetch other participant's status and emit it to the user who joined
         const room = await ChatRoom.findById(roomId);
         if (room && userId) {
-          const counterpartId = room.homeOwnerId.toString() === userId ? room.plumberId : room.homeOwnerId;
+          const counterpartId =
+            room.homeOwnerId.toString() === userId
+              ? room.plumberId
+              : room.homeOwnerId;
           const counterpartUser = await User.findById(counterpartId);
           if (counterpartUser) {
-            socket.emit('user_status_changed', { userId: counterpartId.toString(), isOnline: counterpartUser.isOnline });
+            socket.emit('user_status_changed', {
+              userId: counterpartId.toString(),
+              isOnline: counterpartUser.isOnline,
+            });
           }
         }
       } catch (error) {
@@ -183,18 +188,22 @@ mongoose.connect(config.mongoose.url).then(() => {
             return;
           }
 
-          room = await ChatRoom.create({
-            _id: roomId,
-            homeOwnerId: senderId,
-            plumberId: plumberId,
-          });
+          // Check if room exists
+          let room = await ChatRoom.findById(roomId);
+          if (!room) {
+            let plumberId = receiverId;
+            if (!plumberId) {
+              // Find a licensed plumber to associate with the room
+              const plumber = await User.findOne({ role: 'licensed-plumber' });
+              plumberId = plumber ? plumber._id : null;
+            }
 
-          // Auto-join all currently connected sockets to this new room
-          const sockets = await io.fetchSockets();
-          for (const s of sockets) {
-            s.join(roomId);
-          }
-        }
+            if (!plumberId) {
+              console.error(
+                `Validation Failed: Cannot dynamically create room ${roomId} without a plumberId.`,
+              );
+              return;
+            }
 
         // Validate that the sender is a participant in this room
         if (
@@ -230,20 +239,109 @@ mongoose.connect(config.mongoose.url).then(() => {
               Body: buffer,
               ContentType: mimeType,
             });
-            
-            await s3.send(command);
-            
-            if (config.s3.cloudfrontUrl) {
-              const baseUrl = config.s3.cloudfrontUrl.replace(/\/$/, '');
-              finalFileUrl = `${baseUrl}/${uniqueKey}`;
-            } else {
-              finalFileUrl = `https://${config.s3.S3_BUCKET_PATH}.s3.${config.s3.region}.amazonaws.com/${uniqueKey}`;
+
+            // Auto-join all currently connected sockets to this new room
+            const sockets = await io.fetchSockets();
+            for (const s of sockets) {
+              s.join(roomId);
             }
 
             if (!finalContent) {
               finalContent = `Sent a file: ${fileName || ('file.' + extension)}`;
             }
           }
+
+          // Validate that the sender is a participant in this room
+          if (
+            room.homeOwnerId.toString() !== senderId &&
+            room.plumberId.toString() !== senderId
+          ) {
+            console.error(
+              `Validation Failed: Sender ${senderId} is not part of room ${roomId}`,
+            );
+            return;
+          }
+
+          // Auto-join the sender to the room channel so they can receive future broadcasts/replies
+          socket.join(roomId);
+
+          let finalFileUrl = fileUrl;
+          if (fileUrl && fileUrl.startsWith('data:')) {
+            const matches = fileUrl.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+            if (matches && matches.length === 3) {
+              const mimeType = matches[1];
+              const base64Data = matches[2];
+              const buffer = Buffer.from(base64Data, 'base64');
+
+              const extension = mimeType.split('/').pop() || 'bin';
+              const uniqueKey =
+                'PipeWyze/' + Date.now().toString() + '.' + extension;
+
+              const command = new PutObjectCommand({
+                Bucket: config.s3.S3_BUCKET_PATH,
+                Key: uniqueKey,
+                Body: buffer,
+                ContentType: mimeType,
+              });
+
+              await s3.send(command);
+
+              if (config.s3.cloudfrontUrl) {
+                const baseUrl = config.s3.cloudfrontUrl.replace(/\/$/, '');
+                finalFileUrl = `${baseUrl}/${uniqueKey}`;
+              } else {
+                finalFileUrl = `https://${config.s3.S3_BUCKET_PATH}.s3.${config.s3.region}.amazonaws.com/${uniqueKey}`;
+              }
+            }
+          }
+
+          // Save the message to DB
+          const message = await Message.create({
+            roomId,
+            senderId,
+            content,
+            fileUrl: finalFileUrl,
+            fileType,
+          });
+
+          // Update the last message in the room
+          await ChatRoom.findByIdAndUpdate(roomId, {
+            lastMessage: message._id,
+          });
+
+          // Populate sender details for the response
+          const populatedMessage = await message.populate(
+            'senderId',
+            'fullName profileimageurl',
+          );
+
+          // Broadcast the message to all clients in the room (including sender)
+          io.to(roomId).emit('new_message', populatedMessage);
+
+          // Send push notification to the recipient of the message
+          const counterpartId =
+            room.homeOwnerId.toString() === senderId
+              ? room.plumberId
+              : room.homeOwnerId;
+
+          if (counterpartId) {
+            const sender = await User.findById(senderId);
+            const senderName = sender ? sender.fullName : 'Someone';
+            const notificationService = require('./services/notification.service');
+
+            notificationService
+              .sendToUsers(
+                [counterpartId.toString()],
+                `New message from ${senderName}`,
+                content || 'Sent an attachment',
+                { roomId: roomId.toString(), type: 'chat' },
+              )
+              .catch((err) =>
+                console.error('Failed sending chat notification:', err.message),
+              );
+          }
+        } catch (error) {
+          console.error('Error handling send_message socket event:', error);
         }
 
         // Save the message to DB
@@ -515,7 +613,7 @@ mongoose.connect(config.mongoose.url).then(() => {
 
         const processCompleteUpload = () => {
           upload.writeStream.end();
-          
+
           upload.writeStream.on('finish', async () => {
             try {
               if (upload.timeoutId) clearTimeout(upload.timeoutId);
@@ -577,7 +675,10 @@ mongoose.connect(config.mongoose.url).then(() => {
               );
 
               io.to(upload.roomId).emit('new_message', populatedMessage);
-              socket.emit('upload_success', { uploadId, messageId: message._id });
+              socket.emit('upload_success', {
+                uploadId,
+                messageId: message._id,
+              });
             } catch (err) {
               console.error('Error completing file upload:', err.message);
               handleFail(err.message || 'Failed to process completed file');
@@ -612,9 +713,13 @@ mongoose.connect(config.mongoose.url).then(() => {
       // Check if the user has other active connections (e.g. other tabs/devices)
       if (userId) {
         const sockets = await io.fetchSockets();
-        const hasOtherSockets = sockets.some(s => s.handshake.query.userId === userId && s.id !== socket.id);
+        const hasOtherSockets = sockets.some(
+          (s) => s.handshake.query.userId === userId && s.id !== socket.id,
+        );
         if (!hasOtherSockets) {
-          User.findByIdAndUpdate(userId, { isOnline: false }).exec().catch(err => console.error(err));
+          User.findByIdAndUpdate(userId, { isOnline: false })
+            .exec()
+            .catch((err) => console.error(err));
           io.emit('user_status_changed', { userId, isOnline: false });
         }
       }
