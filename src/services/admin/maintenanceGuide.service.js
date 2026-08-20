@@ -78,6 +78,8 @@ const updateMaintenanceGuideById = async (id, data) => {
 const deleteMaintenanceGuideById = async (id) => {
   const guide = await getMaintenanceGuideById(id);
   await MaintenanceGuide.deleteOne({ _id: id });
+  const SavedResource = require('../../models/savedResource.model');
+  await SavedResource.deleteMany({ resourceId: id });
   return guide;
 };
 

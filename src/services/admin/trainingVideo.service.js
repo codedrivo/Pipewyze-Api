@@ -56,6 +56,8 @@ const updateTrainingVideoById = async (id, data) => {
 const deleteTrainingVideoById = async (id) => {
   const video = await getTrainingVideoById(id);
   await TrainingVideo.deleteOne({ _id: id });
+  const SavedResource = require('../../models/savedResource.model');
+  await SavedResource.deleteMany({ resourceId: id });
   return video;
 };
 

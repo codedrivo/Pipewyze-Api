@@ -68,6 +68,8 @@ const updateEssentialToolById = async (id, data) => {
 const deleteEssentialToolById = async (id) => {
   const tool = await getEssentialToolById(id);
   await EssentialTool.deleteOne({ _id: id });
+  const SavedResource = require('../../models/savedResource.model');
+  await SavedResource.deleteMany({ resourceId: id });
   return tool;
 };
 
