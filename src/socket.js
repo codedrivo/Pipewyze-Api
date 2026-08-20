@@ -86,11 +86,31 @@ app.use(express.static(__dirname));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 
-io.on('connection', (socket) => {
+io.on('connection', async (socket) => {
   console.log('a user is connected:', socket.id);
 
   // Automatically join the socket to user's chat rooms on connection asynchronously
-  const userId = socket.handshake.query.userId;
+  let userId = socket.handshake.query.userId;
+  const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+
+  if (!userId && token) {
+    try {
+      const access = token.startsWith('Bearer ') ? token.split(' ')[1] : token;
+      const jwt = require('jsonwebtoken');
+      const config = require('./config/config');
+      const data = jwt.verify(access, config.jwt.secret, {
+        algorithm: config.jwt.algo,
+        issuer: config.jwt.issuer,
+        audience: 'access',
+      });
+      if (data && data.sub) {
+        userId = data.sub;
+      }
+    } catch (err) {
+      console.error('Socket token verification failed:', err.message);
+    }
+  }
+
   if (userId) {
     socket.userId = userId;
     // Set user online state in DB
