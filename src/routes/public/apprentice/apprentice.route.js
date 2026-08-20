@@ -17,6 +17,8 @@ router
 
 router.get('/maintenance-guides', auth(), controller.getMaintenanceGuides);
 
+router.get('/dashboard', auth('apprentice'), controller.getDashboardSummary);
+
 router.get(
   '/maintenance-guides/:guideId',
   auth(),

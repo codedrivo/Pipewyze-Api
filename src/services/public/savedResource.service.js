@@ -7,6 +7,50 @@ require('../../models/maintenanceGuide.model');
 require('../../models/plumbingCode.model');
 require('../../models/trendingVideo.model');
 
+const resolveResourceType = async (userId, resourceId, originalType) => {
+  const mongoose = require('mongoose');
+
+  // Check if it exists in TrendingVideo
+  const isVideo = await mongoose
+    .model('TrendingVideo')
+    .exists({ _id: resourceId });
+  if (isVideo) {
+    return 'TrendingVideo';
+  }
+
+  // Check if it exists in EssentialTool
+  const isTool = await mongoose
+    .model('EssentialTool')
+    .exists({ _id: resourceId });
+  if (isTool) {
+    const User = require('../../models/user.model');
+    const user = await User.findById(userId);
+    const role = user ? user.role : 'home-owner';
+    if (role === 'apprentice' || role === 'licensed-plumber') {
+      return 'LibraryTools';
+    }
+    return 'EssentialTool';
+  }
+
+  // Check if it exists in MaintenanceGuide
+  const isGuide = await mongoose
+    .model('MaintenanceGuide')
+    .exists({ _id: resourceId });
+  if (isGuide) {
+    return 'MaintenanceGuide';
+  }
+
+  // Check if it exists in PlumbingCode
+  const isCode = await mongoose
+    .model('PlumbingCode')
+    .exists({ _id: resourceId });
+  if (isCode) {
+    return 'PlumbingCode';
+  }
+
+  return originalType;
+};
+
 /**
  * Save a resource (EssentialTool, MaintenanceGuide, or PlumbingCode) for a user
  * @param {string} userId
@@ -15,11 +59,20 @@ require('../../models/trendingVideo.model');
  * @returns {Promise<SavedResource>}
  */
 const saveResource = async (userId, resourceId, resourceType) => {
+  const mappedType = await resolveResourceType(
+    userId,
+    resourceId,
+    resourceType,
+  );
   const existing = await SavedResource.findOne({ userId, resourceId });
   if (existing) {
     throw new ApiError('Resource already saved', 400);
   }
-  return await SavedResource.create({ userId, resourceId, resourceType });
+  return await SavedResource.create({
+    userId,
+    resourceId,
+    resourceType: mappedType,
+  });
 };
 
 /**
@@ -54,8 +107,23 @@ const getSavedResources = async (userId, page = 1, limit = 10) => {
     .skip(skip)
     .limit(limit);
 
+  const mappedItems = savedItems.map((item) => {
+    const itemJson = item.toJSON ? item.toJSON() : item;
+    if (
+      (itemJson.resourceType === 'TrendingVideo' ||
+        itemJson.resourceType === 'LibraryTools') &&
+      itemJson.resourceId
+    ) {
+      itemJson.resourceType =
+        itemJson.resourceId.targetAudience ||
+        itemJson.resourceId.audience ||
+        'apprentice';
+    }
+    return itemJson;
+  });
+
   return {
-    results: savedItems,
+    results: mappedItems,
     page,
     limit,
     totalPages: Math.ceil(totalResults / limit),

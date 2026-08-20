@@ -55,6 +55,11 @@ const essentialToolSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    audience: {
+      type: String,
+      enum: ['home-owner', 'apprentice', 'licensed-plumber'],
+      default: 'home-owner',
+    },
   },
   {
     timestamps: true,

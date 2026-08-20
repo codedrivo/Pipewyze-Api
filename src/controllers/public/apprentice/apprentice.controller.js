@@ -81,6 +81,50 @@ const getMaintenanceGuideById = catchAsync(async (req, res) => {
   res.status(200).send({ status: 200, guide: guideJson });
 });
 
+const getDashboardSummary = catchAsync(async (req, res) => {
+  const TrendingVideo = require('../../../models/trendingVideo.model');
+  const trendingVideo = await TrendingVideo.findOne({
+    targetAudience: 'apprentice',
+    videoUrl: { $ne: '', $exists: true },
+  }).sort({ createdAt: -1 });
+
+  const quickActions = [
+    {
+      title: 'Plumbing Code Library',
+      route: '/public/plumbing-codes',
+      icon: 'plumbing_code_library',
+    },
+    {
+      title: 'Training Videos',
+      route: '/public/trending-videos',
+      icon: 'training_videos',
+    },
+    {
+      title: 'Maintenance Library',
+      route: '/public/apprentice/maintenance-guides',
+      icon: 'maintenance_library',
+    },
+    {
+      title: 'Tool Library',
+      route: '/public/tools-library',
+      icon: 'tool_library',
+    },
+    {
+      title: 'Saved Resources',
+      route: '/public/saved-resources',
+      icon: 'saved_resources',
+    },
+  ];
+
+  res.status(200).send({
+    status: 200,
+    data: {
+      quickActions,
+      trendingVideo: trendingVideo || null,
+    },
+  });
+});
+
 module.exports = {
   createApprentice,
   getApprentice,
@@ -89,4 +133,5 @@ module.exports = {
   getApprentices,
   getMaintenanceGuides,
   getMaintenanceGuideById,
+  getDashboardSummary,
 };

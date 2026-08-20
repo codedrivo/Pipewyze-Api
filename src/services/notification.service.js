@@ -1,6 +1,7 @@
 const admin = require('firebase-admin');
 const { getMessaging } = require('firebase-admin/messaging');
 const User = require('../models/user.model');
+const Notification = require('../models/notification.model');
 
 const projectId = process.env.FIREBASE_PROJECT_ID;
 const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
@@ -105,7 +106,20 @@ const sendToTokens = async (userId, tokens, title, body, data = {}) => {
 const sendToUsers = async (userIds, title, body, data = {}) => {
   try {
     const users = await User.find({ _id: { $in: userIds } });
-    const promises = users.map((user) => {
+    const promises = users.map(async (user) => {
+      // Save notification to DB
+      try {
+        await Notification.create({
+          userId: user._id,
+          title,
+          body,
+          data,
+          type: data.type || (data.roomId ? 'chat' : 'system'),
+        });
+      } catch (dbErr) {
+        console.error('Failed saving notification to DB:', dbErr.message);
+      }
+
       if (user.fcmTokens && user.fcmTokens.length > 0) {
         return sendToTokens(
           user._id.toString(),
@@ -115,7 +129,6 @@ const sendToUsers = async (userIds, title, body, data = {}) => {
           data,
         );
       }
-      return Promise.resolve();
     });
     await Promise.all(promises);
   } catch (error) {
@@ -133,7 +146,20 @@ const sendToUsers = async (userIds, title, body, data = {}) => {
 const sendToRole = async (role, title, body, data = {}) => {
   try {
     const users = await User.find({ role });
-    const promises = users.map((user) => {
+    const promises = users.map(async (user) => {
+      // Save notification to DB
+      try {
+        await Notification.create({
+          userId: user._id,
+          title,
+          body,
+          data,
+          type: data.type || (data.roomId ? 'chat' : 'system'),
+        });
+      } catch (dbErr) {
+        console.error('Failed saving notification to DB:', dbErr.message);
+      }
+
       if (user.fcmTokens && user.fcmTokens.length > 0) {
         return sendToTokens(
           user._id.toString(),
@@ -143,7 +169,6 @@ const sendToRole = async (role, title, body, data = {}) => {
           data,
         );
       }
-      return Promise.resolve();
     });
     await Promise.all(promises);
   } catch (error) {
