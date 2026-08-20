@@ -185,6 +185,19 @@ mongoose.connect(config.mongoose.url).then(() => {
 
       const activeUserId = payloadUserId || socket.userId || userId;
       if (activeUserId) {
+        const checkUser = await User.findById(activeUserId);
+        if (
+          !checkUser ||
+          (checkUser.role !== 'home-owner' &&
+            checkUser.role !== 'licensed-plumber')
+        ) {
+          console.error(
+            `Access denied: User with role ${
+              checkUser ? checkUser.role : 'unknown'
+            } is not allowed in chat rooms.`,
+          );
+          return;
+        }
         socket.userId = activeUserId;
       }
 
@@ -256,33 +269,77 @@ mongoose.connect(config.mongoose.url).then(() => {
             return;
           }
 
+          const senderUser = await User.findById(senderId);
+          if (!senderUser) {
+            console.error(`Validation Failed: Sender ${senderId} not found.`);
+            return;
+          }
+
+          if (
+            senderUser.role !== 'home-owner' &&
+            senderUser.role !== 'licensed-plumber'
+          ) {
+            console.error(
+              `Validation Failed: Sender role ${senderUser.role} is not authorized for one-to-one chat.`,
+            );
+            return;
+          }
+
           // Check if room exists
           let room = await ChatRoom.findById(roomId);
           if (!room) {
             let plumberId = receiverId;
-            if (!plumberId) {
-              // Find a licensed plumber to associate with the room
-              const plumber = await User.findOne({ role: 'licensed-plumber' });
-              plumberId = plumber ? plumber._id : null;
+            let homeOwnerId = senderId;
+
+            if (senderUser.role === 'licensed-plumber') {
+              plumberId = senderId;
+              homeOwnerId = receiverId;
             }
 
-            if (!plumberId) {
+            if (!homeOwnerId || !plumberId) {
               console.error(
-                `Validation Failed: Cannot dynamically create room ${roomId} without a plumberId.`,
+                `Validation Failed: Cannot dynamically create room without both homeOwnerId and plumberId.`,
               );
+              return;
+            }
+
+            const homeOwnerUser = await User.findById(homeOwnerId);
+            const plumberUser = await User.findById(plumberId);
+
+            if (!homeOwnerUser || homeOwnerUser.role !== 'home-owner') {
+              console.error(`Validation Failed: Invalid homeowner.`);
+              return;
+            }
+            if (!plumberUser || plumberUser.role !== 'licensed-plumber') {
+              console.error(`Validation Failed: Invalid licensed plumber.`);
               return;
             }
 
             room = await ChatRoom.create({
               _id: roomId,
-              homeOwnerId: senderId,
-              plumberId: plumberId,
+              homeOwnerId,
+              plumberId,
             });
 
             // Auto-join all currently connected sockets to this new room
             const sockets = await io.fetchSockets();
             for (const s of sockets) {
               s.join(roomId);
+            }
+          } else {
+            // Verify existing room has valid roles
+            const homeOwnerUser = await User.findById(room.homeOwnerId);
+            const plumberUser = await User.findById(room.plumberId);
+            if (
+              !homeOwnerUser ||
+              homeOwnerUser.role !== 'home-owner' ||
+              !plumberUser ||
+              plumberUser.role !== 'licensed-plumber'
+            ) {
+              console.error(
+                `Validation Failed: Chat room participants are not valid home-owner and licensed-plumber.`,
+              );
+              return;
             }
           }
 
@@ -378,7 +435,6 @@ mongoose.connect(config.mongoose.url).then(() => {
               ? room.plumberId
               : room.homeOwnerId;
 
-          const senderUser = await User.findById(senderId);
           const senderName = senderUser ? senderUser.fullName : 'Someone';
 
           notificationService
