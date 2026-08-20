@@ -98,6 +98,7 @@ mongoose.connect(config.mongoose.url).then(() => {
     cors: { origin: '*', methods: ['GET', 'POST'] },
     maxHttpBufferSize: 5 * 1024 * 1024, // 5MB max message size for chunks
   });
+  global.io = io;
 
   io.on('connection', async (socket) => {
     console.log(`User connected: ${socket.id}`);
@@ -182,7 +183,7 @@ mongoose.connect(config.mongoose.url).then(() => {
       if (!roomId) return;
       socket.join(roomId);
 
-      const activeUserId = payloadUserId || userId || socket.userId;
+      const activeUserId = payloadUserId || socket.userId || userId;
       if (activeUserId) {
         socket.userId = activeUserId;
       }
