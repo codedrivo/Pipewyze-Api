@@ -52,6 +52,8 @@ const updatePlumbingCodeById = async (id, data) => {
 const deletePlumbingCodeById = async (id) => {
   const code = await getPlumbingCodeById(id);
   await PlumbingCode.deleteOne({ _id: id });
+  const SavedResource = require('../../models/savedResource.model');
+  await SavedResource.deleteMany({ resourceId: id });
   return code;
 };
 
