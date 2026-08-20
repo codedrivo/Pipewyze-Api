@@ -13,7 +13,7 @@ const adminEssentialToolRoute = require('./admin/essentialTool.route');
 const adminPlumbingCodeRoute = require('./admin/plumbingCode.route');
 const adminPlumbingCodeCategoryRoute = require('./admin/plumbingCodeCategory.route');
 const adminMaintenanceGuideRoute = require('./admin/maintenanceGuide.route');
-const adminTrendingVideoRoute = require('./admin/trendingVideo.route');
+const adminTrainingVideoRoute = require('./admin/trainingVideo.route');
 const adminAiVideoRoute = require('./admin/aiVideo.route');
 const adminFaqRoute = require('./admin/faq.route');
 const adminSupportRoute = require('./admin/support.route');
@@ -28,7 +28,7 @@ const essentialToolPublicRoute = require('./public/essential-tool/essentialTool.
 const plumbingCodePublicRoute = require('./public/plumbing-code/plumbingCode.route');
 const savedResourceRoute = require('./public/saved-resource/savedResource.route');
 const toolsLibraryRoute = require('./public/tools-library/toolsLibrary.route');
-const trendingVideoPublicRoute = require('./public/trending-video/trendingVideo.route');
+const trainingVideoPublicRoute = require('./public/training-video/trainingVideo.route');
 const aiVideoPublicRoute = require('./public/ai-video/aiVideo.route');
 const faqPublicRoute = require('./public/faq/faq.route');
 
@@ -48,7 +48,7 @@ router.use('/admin/essential-tool', adminEssentialToolRoute);
 router.use('/admin/plumbing-code', adminPlumbingCodeRoute);
 router.use('/admin/plumbing-code-category', adminPlumbingCodeCategoryRoute);
 router.use('/admin/maintenance-guide', adminMaintenanceGuideRoute);
-router.use('/admin/trending-video', adminTrendingVideoRoute);
+router.use('/admin/training-video', adminTrainingVideoRoute);
 router.use('/admin/ai-videos', adminAiVideoRoute);
 router.use('/admin/faq', adminFaqRoute);
 router.use('/admin/support', adminSupportRoute);
@@ -65,7 +65,7 @@ router.use('/public/essential-tools', essentialToolPublicRoute);
 router.use('/public/plumbing-codes', plumbingCodePublicRoute);
 router.use('/public/saved-resources', savedResourceRoute);
 router.use('/public/tools-library', toolsLibraryRoute);
-router.use('/public/trending-videos', trendingVideoPublicRoute);
+router.use('/public/training-videos', trainingVideoPublicRoute);
 router.use('/public/ai-videos', aiVideoPublicRoute);
 router.use('/public/faq', faqPublicRoute);
 

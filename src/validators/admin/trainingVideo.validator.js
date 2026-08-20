@@ -1,6 +1,6 @@
 const Joi = require('joi');
 
-const createTrendingVideo = Joi.object({
+const createTrainingVideo = Joi.object({
   title: Joi.string().required(),
   videoUrl: Joi.string().required(),
   description: Joi.string().allow('').optional(),
@@ -11,7 +11,7 @@ const createTrendingVideo = Joi.object({
   isAiVideo: Joi.boolean().optional(),
 });
 
-const updateTrendingVideo = Joi.object({
+const updateTrainingVideo = Joi.object({
   title: Joi.string().optional(),
   videoUrl: Joi.string().optional(),
   description: Joi.string().allow('').optional(),
@@ -27,7 +27,7 @@ const singleId = Joi.object({
 });
 
 module.exports = {
-  createTrendingVideo,
-  updateTrendingVideo,
+  createTrainingVideo,
+  updateTrainingVideo,
   singleId,
 };
