@@ -180,6 +180,20 @@ const refreshTokens = catchAsync(async (req, res, next) => {
 
 // Logout
 const logout = catchAsync(async (req, res, next) => {
+  try {
+    const payload = await token.verifyToken(req.body.access, 'access');
+    const userId = payload.sub;
+    if (userId) {
+      const User = require('../../models/user.model');
+      await User.findByIdAndUpdate(userId, { isOnline: false });
+      if (global.io) {
+        global.io.emit('user_status_changed', { userId, isOnline: false });
+      }
+    }
+  } catch (err) {
+    console.error('Logout user status cleanup error:', err.message);
+  }
+
   await token.blacklistToken(req.body.access, 'access');
   await token.blacklistToken(req.body.refresh, 'refresh');
   res.status(200).send({ message: 'Logout successfull' });

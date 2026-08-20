@@ -164,7 +164,7 @@ io.on('connection', async (socket) => {
     if (!roomId) return;
     socket.join(roomId);
 
-    const activeUserId = payloadUserId || userId || socket.userId;
+    const activeUserId = payloadUserId || socket.userId || userId;
     if (activeUserId) {
       socket.userId = activeUserId;
     }
