@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const service = require('../../../services/admin/trendingVideo.service');
+const service = require('../../../services/admin/trainingVideo.service');
 const catchAsync = require('../../../helpers/asyncErrorHandler');
 const auth = require('../../../middlewares/auth.middleware');
 
@@ -21,13 +21,13 @@ router.get(
         query.targetAudience = targetAudience;
       }
     }
-    const videos = await service.getTrendingVideos(query);
+    const videos = await service.getTrainingVideos(query);
     let videosWithSaved = videos;
     if (req.user) {
       const SavedResource = require('../../../models/savedResource.model');
       const savedResources = await SavedResource.find({
         userId: req.user._id,
-        resourceType: 'TrendingVideo',
+        resourceType: 'TrainingVideo',
         resourceId: { $in: videos.map((v) => v._id) },
       });
       const savedResourceIds = new Set(
@@ -50,13 +50,13 @@ router.get(
   '/:id',
   auth(),
   catchAsync(async (req, res) => {
-    const video = await service.getTrendingVideoById(req.params.id);
+    const video = await service.getTrainingVideoById(req.params.id);
     let videoJson = video.toJSON ? video.toJSON() : video;
     if (req.user) {
       const SavedResource = require('../../../models/savedResource.model');
       const isSaved = await SavedResource.exists({
         userId: req.user._id,
-        resourceType: 'TrendingVideo',
+        resourceType: 'TrainingVideo',
         resourceId: video._id,
       });
       videoJson.isSaved = !!isSaved;

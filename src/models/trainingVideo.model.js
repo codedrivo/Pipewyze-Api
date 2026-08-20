@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 const { toJSON } = require('./plugins');
 
-const trendingVideoSchema = new mongoose.Schema(
+const trainingVideoSchema = new mongoose.Schema(
   {
     title: {
       type: String,
@@ -37,8 +37,12 @@ const trendingVideoSchema = new mongoose.Schema(
   },
 );
 
-trendingVideoSchema.plugin(toJSON);
+trainingVideoSchema.plugin(toJSON);
 
-const TrendingVideo = mongoose.model('TrendingVideo', trendingVideoSchema);
+const TrainingVideo = mongoose.model(
+  'TrainingVideo',
+  trainingVideoSchema,
+  'trendingvideos',
+);
 
-module.exports = TrendingVideo;
+module.exports = TrainingVideo;

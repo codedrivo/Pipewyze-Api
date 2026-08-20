@@ -5,17 +5,17 @@ const ApiError = require('../../helpers/apiErrorConverter');
 require('../../models/essentialTool.model');
 require('../../models/maintenanceGuide.model');
 require('../../models/plumbingCode.model');
-require('../../models/trendingVideo.model');
+require('../../models/trainingVideo.model');
 
 const resolveResourceType = async (userId, resourceId, originalType) => {
   const mongoose = require('mongoose');
 
-  // Check if it exists in TrendingVideo
+  // Check if it exists in TrainingVideo
   const isVideo = await mongoose
-    .model('TrendingVideo')
+    .model('TrainingVideo')
     .exists({ _id: resourceId });
   if (isVideo) {
-    return 'TrendingVideo';
+    return 'TrainingVideo';
   }
 
   // Check if it exists in EssentialTool
@@ -110,7 +110,7 @@ const getSavedResources = async (userId, page = 1, limit = 10) => {
   const mappedItems = savedItems.map((item) => {
     const itemJson = item.toJSON ? item.toJSON() : item;
     if (
-      (itemJson.resourceType === 'TrendingVideo' ||
+      (itemJson.resourceType === 'TrainingVideo' ||
         itemJson.resourceType === 'LibraryTools') &&
       itemJson.resourceId
     ) {

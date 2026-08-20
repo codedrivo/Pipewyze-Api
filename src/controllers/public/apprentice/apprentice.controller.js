@@ -82,8 +82,8 @@ const getMaintenanceGuideById = catchAsync(async (req, res) => {
 });
 
 const getDashboardSummary = catchAsync(async (req, res) => {
-  const TrendingVideo = require('../../../models/trendingVideo.model');
-  const trendingVideo = await TrendingVideo.findOne({
+  const TrainingVideo = require('../../../models/trainingVideo.model');
+  const trainingVideo = await TrainingVideo.findOne({
     targetAudience: 'apprentice',
     videoUrl: { $ne: '', $exists: true },
   }).sort({ createdAt: -1 });
@@ -96,7 +96,7 @@ const getDashboardSummary = catchAsync(async (req, res) => {
     },
     {
       title: 'Training Videos',
-      route: '/public/trending-videos',
+      route: '/public/training-videos',
       icon: 'training_videos',
     },
     {
@@ -120,7 +120,8 @@ const getDashboardSummary = catchAsync(async (req, res) => {
     status: 200,
     data: {
       quickActions,
-      trendingVideo: trendingVideo || null,
+      trendingVideo: trainingVideo || null,
+      trainingVideo: trainingVideo || null,
     },
   });
 });
