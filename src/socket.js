@@ -791,8 +791,9 @@ io.on('connection', async (socket) => {
       const sockets = await io.fetchSockets();
       const hasOtherSockets = sockets.some(
         (s) =>
-          (s.handshake.query.userId === activeUserId ||
-            s.userId === activeUserId) &&
+          ((s.handshake.query.userId &&
+            String(s.handshake.query.userId) === String(activeUserId)) ||
+            (s.userId && String(s.userId) === String(activeUserId))) &&
           s.id !== socket.id,
       );
       if (!hasOtherSockets) {
