@@ -22,6 +22,7 @@ const savedResourceSchema = mongoose.Schema(
         'PlumbingCode',
         'EssentialTool',
         'LibraryTools',
+        'TrendingVideo',
       ],
     },
   },

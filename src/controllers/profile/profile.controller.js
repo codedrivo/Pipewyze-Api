@@ -1,4 +1,5 @@
 const catchAsync = require('../../helpers/asyncErrorHandler');
+const Notification = require('../../models/notification.model');
 
 const ApiError = require('../../helpers/apiErrorConverter');
 const service = require('../../services/auth/auth.service');
@@ -214,6 +215,34 @@ const removeFcmToken = catchAsync(async (req, res, next) => {
   });
 });
 
+// Retrieve user notifications (both system and chat notifications)
+const getNotifications = catchAsync(async (req, res) => {
+  const userId = req.user._id;
+  const page = parseInt(req.query.page, 10) || 1;
+  const limit = parseInt(req.query.limit, 10) || 20;
+  const skip = (page - 1) * limit;
+
+  const total = await Notification.countDocuments({ userId });
+  const notifications = await Notification.find({ userId })
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit);
+
+  res.status(200).send({
+    status: 200,
+    message: 'Notifications retrieved successfully',
+    data: {
+      notifications,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+    },
+  });
+});
+
 module.exports = {
   deleteAccount,
   passwordChange,
@@ -225,4 +254,5 @@ module.exports = {
   edituser,
   updateFcmToken,
   removeFcmToken,
+  getNotifications,
 };

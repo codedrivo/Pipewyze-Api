@@ -7,7 +7,14 @@ router.get(
   '/',
   auth(),
   catchAsync(async (req, res) => {
-    const tools = await service.getEssentialTools();
+    const query = {};
+    if (
+      req.user &&
+      ['home-owner', 'apprentice', 'licensed-plumber'].includes(req.user.role)
+    ) {
+      query.audience = req.user.role;
+    }
+    const tools = await service.getEssentialTools(query);
     let toolsWithSaved = tools;
     if (req.user) {
       const SavedResource = require('../../../models/savedResource.model');

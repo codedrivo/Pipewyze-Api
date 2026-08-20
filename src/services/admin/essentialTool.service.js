@@ -44,8 +44,8 @@ const createEssentialTool = async (data) => {
   return tool;
 };
 
-const getEssentialTools = async () => {
-  const tools = await EssentialTool.find({}).sort({ createdAt: -1 });
+const getEssentialTools = async (query = {}) => {
+  const tools = await EssentialTool.find(query).sort({ createdAt: -1 });
   return tools;
 };
 

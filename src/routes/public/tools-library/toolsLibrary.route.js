@@ -10,6 +10,12 @@ router.get(
   catchAsync(async (req, res) => {
     const { search } = req.query;
     const filter = {};
+    if (
+      req.user &&
+      ['home-owner', 'apprentice', 'licensed-plumber'].includes(req.user.role)
+    ) {
+      filter.audience = req.user.role;
+    }
     if (search) {
       filter.$or = [
         { name: { $regex: search, $options: 'i' } },

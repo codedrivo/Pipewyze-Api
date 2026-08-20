@@ -9,7 +9,11 @@ router.get(
   catchAsync(async (req, res) => {
     const { role } = req.user;
     const query = {};
-    if (role === 'apprentice' || role === 'licensed-plumber') {
+    if (
+      role === 'apprentice' ||
+      role === 'licensed-plumber' ||
+      role === 'home-owner'
+    ) {
       query.targetAudience = role;
     } else {
       const { targetAudience } = req.query;
@@ -18,9 +22,26 @@ router.get(
       }
     }
     const videos = await service.getTrendingVideos(query);
+    let videosWithSaved = videos;
+    if (req.user) {
+      const SavedResource = require('../../../models/savedResource.model');
+      const savedResources = await SavedResource.find({
+        userId: req.user._id,
+        resourceType: 'TrendingVideo',
+        resourceId: { $in: videos.map((v) => v._id) },
+      });
+      const savedResourceIds = new Set(
+        savedResources.map((sr) => sr.resourceId.toString()),
+      );
+      videosWithSaved = videos.map((video) => {
+        const videoJson = video.toJSON ? video.toJSON() : video;
+        videoJson.isSaved = savedResourceIds.has(video._id.toString());
+        return videoJson;
+      });
+    }
     res.status(200).json({
       status: 200,
-      videos,
+      videos: videosWithSaved,
     });
   }),
 );
@@ -30,9 +51,19 @@ router.get(
   auth(),
   catchAsync(async (req, res) => {
     const video = await service.getTrendingVideoById(req.params.id);
+    let videoJson = video.toJSON ? video.toJSON() : video;
+    if (req.user) {
+      const SavedResource = require('../../../models/savedResource.model');
+      const isSaved = await SavedResource.exists({
+        userId: req.user._id,
+        resourceType: 'TrendingVideo',
+        resourceId: video._id,
+      });
+      videoJson.isSaved = !!isSaved;
+    }
     res.status(200).json({
       status: 200,
-      video,
+      video: videoJson,
     });
   }),
 );
