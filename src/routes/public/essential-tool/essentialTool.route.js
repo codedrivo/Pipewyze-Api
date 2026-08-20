@@ -2,6 +2,7 @@ const router = require('express').Router();
 const service = require('../../../services/admin/essentialTool.service');
 const catchAsync = require('../../../helpers/asyncErrorHandler');
 const auth = require('../../../middlewares/auth.middleware');
+const ApiError = require('../../../helpers/apiErrorConverter');
 
 router.get(
   '/',
@@ -43,7 +44,15 @@ router.get(
   '/:id',
   auth(),
   catchAsync(async (req, res) => {
+    const { role } = req.user;
     const tool = await service.getEssentialToolById(req.params.id);
+    if (
+      req.user &&
+      ['home-owner', 'apprentice', 'licensed-plumber'].includes(role) &&
+      tool.audience !== role
+    ) {
+      throw new ApiError('Essential Tool not found', 404);
+    }
     let toolJson = tool.toJSON ? tool.toJSON() : tool;
     if (req.user) {
       const SavedResource = require('../../../models/savedResource.model');

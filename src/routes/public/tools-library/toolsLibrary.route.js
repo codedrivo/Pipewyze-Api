@@ -53,7 +53,15 @@ router.get(
   '/:id',
   auth(),
   catchAsync(async (req, res) => {
-    const tool = await EssentialTool.findById(req.params.id);
+    const { role } = req.user;
+    const filter = { _id: req.params.id };
+    if (
+      req.user &&
+      ['home-owner', 'apprentice', 'licensed-plumber'].includes(role)
+    ) {
+      filter.audience = role;
+    }
+    const tool = await EssentialTool.findOne(filter);
     if (!tool) {
       res.status(404).json({
         status: 404,
