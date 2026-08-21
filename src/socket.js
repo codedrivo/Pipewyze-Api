@@ -6,6 +6,8 @@ const config = require('./config/config');
 const ChatRoom = require('./models/chatRoom.model');
 const Message = require('./models/message.model');
 const User = require('./models/user.model');
+const axios = require('axios');
+const AiVideo = require('./models/aiVideo.model');
 const notificationService = require('./services/notification.service');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const fs = require('fs');
@@ -837,6 +839,117 @@ io.on('connection', async (socket) => {
       }
     },
   );
+  // AI Assistant socket handler
+  socket.on('ask_ai', async ({ message, userId: payloadUserId }) => {
+    const activeUserId = payloadUserId || socket.userId || userId;
+    console.log(`[ask_ai] Received event from userId: ${activeUserId}, message: "${message}"`);
+    try {
+      if (!activeUserId) {
+        console.warn('[ask_ai] User verification failed: missing user ID');
+        socket.emit('ai_error', { message: 'User verification failed (missing user ID).' });
+        return;
+      }
+
+      const user = await User.findById(activeUserId);
+      if (!user) {
+        console.warn(`[ask_ai] User not found for ID: ${activeUserId}`);
+        socket.emit('ai_error', { message: 'User not found in database.' });
+        return;
+      }
+
+      // Query AI videos targeting the user's role
+      const videos = await AiVideo.find({ targetAudience: user.role }).lean();
+      console.log(`[ask_ai] Found ${videos.length} target videos for role: ${user.role}`);
+
+      // Format local videos to provide as context in the system prompt
+      const formattedVideos = videos
+        .map(
+          (v, i) =>
+            `${i + 1}. Title: "${v.title}", Description: "${v.description || ''}", Video URL: "${v.videoUrl}"`,
+        )
+        .join('\n');
+
+      const openaiApiKey = process.env.OPENAI_API_KEY;
+      if (!openaiApiKey) {
+        console.warn('[ask_ai] OpenAI API key not configured');
+        socket.emit('ai_response', {
+          sender: 'ai',
+          message: 'AI Assistant is currently unavailable (API key not configured).',
+          suggestedVideo: null,
+        });
+        return;
+      }
+
+      // Query OpenAI Chat Completions API
+      console.log('[ask_ai] Querying OpenAI Chat Completions API...');
+      const openAiResponse = await axios.post(
+        'https://api.openai.com/v1/chat/completions',
+        {
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content: `You are the PipeWyze AI assistant, a professional helper for plumbing questions.
+You are assisting a user with the role: "${user.role}".
+
+Here is a list of local videos uploaded by our administration that are available for this user:
+${formattedVideos || 'No local videos currently available.'}
+
+Instructions:
+1. Answer the user's question clearly, concisely, and professionally.
+2. If any of the local videos listed above are highly relevant to the user's query, you MUST recommend it/them and output their exact titles and Video URLs in your message.
+3. If none of the local videos are relevant, answer the question and suggest they search on YouTube or other online resources for a video demonstration.
+4. If a local video matches, you MUST mention either its URL or its title in your reply so the backend can automatically parse and highlight it.`,
+            },
+            {
+              role: 'user',
+              content: message,
+            },
+          ],
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${openaiApiKey}`,
+            'Content-Type': 'application/json',
+          },
+        },
+      );
+
+      const aiMessage = openAiResponse.data.choices[0].message.content;
+      console.log(`[ask_ai] OpenAI Response message: "${aiMessage}"`);
+
+      // Extract which local video (if any) was recommended by matching the title or URL in the response
+      let suggestedVideo = null;
+      for (const v of videos) {
+        if (
+          aiMessage.includes(v.videoUrl) ||
+          aiMessage.toLowerCase().includes(v.title.toLowerCase())
+        ) {
+          suggestedVideo = {
+            id: v._id || v.id,
+            title: v.title,
+            videoUrl: v.videoUrl,
+            description: v.description,
+            thumbnail: v.thumbnail,
+          };
+          break;
+        }
+      }
+
+      if (suggestedVideo) {
+        console.log(`[ask_ai] Suggested video matched: "${suggestedVideo.title}"`);
+      }
+
+      socket.emit('ai_response', {
+        sender: 'ai',
+        message: aiMessage,
+        suggestedVideo,
+      });
+    } catch (err) {
+      console.error('[ask_ai] Error in AI assistant socket handler:', err);
+      socket.emit('ai_error', { message: 'Failed to generate response from AI Assistant.' });
+    }
+  });
 
   socket.on('disconnect', async () => {
     console.log('user disconnected:', socket.id);
