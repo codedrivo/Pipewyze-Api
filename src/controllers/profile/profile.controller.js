@@ -1,4 +1,5 @@
 const catchAsync = require('../../helpers/asyncErrorHandler');
+const Notification = require('../../models/notification.model');
 
 const ApiError = require('../../helpers/apiErrorConverter');
 const service = require('../../services/auth/auth.service');
@@ -180,6 +181,68 @@ const addSupport = catchAsync(async (req, res) => {
   });
 });
 
+// Update FCM token
+const updateFcmToken = catchAsync(async (req, res, next) => {
+  const { token } = req.body;
+  const user = req.user;
+
+  if (!user.fcmTokens) {
+    user.fcmTokens = [];
+  }
+
+  if (!user.fcmTokens.includes(token)) {
+    user.fcmTokens.push(token);
+    await user.save();
+  }
+
+  res.status(200).json({
+    message: 'FCM Token registered successfully',
+  });
+});
+
+// Remove FCM token
+const removeFcmToken = catchAsync(async (req, res, next) => {
+  const { token } = req.body;
+  const user = req.user;
+
+  if (user.fcmTokens && user.fcmTokens.includes(token)) {
+    user.fcmTokens = user.fcmTokens.filter((t) => t !== token);
+    await user.save();
+  }
+
+  res.status(200).json({
+    message: 'FCM Token removed successfully',
+  });
+});
+
+// Retrieve user notifications (both system and chat notifications)
+const getNotifications = catchAsync(async (req, res) => {
+  const userId = req.user._id;
+  const page = parseInt(req.query.page, 10) || 1;
+  const limit = parseInt(req.query.limit, 10) || 20;
+  const skip = (page - 1) * limit;
+
+  const total = await Notification.countDocuments({ userId });
+  const notifications = await Notification.find({ userId })
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit);
+
+  res.status(200).send({
+    status: 200,
+    message: 'Notifications retrieved successfully',
+    data: {
+      notifications,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+    },
+  });
+});
+
 module.exports = {
   deleteAccount,
   passwordChange,
@@ -189,4 +252,7 @@ module.exports = {
   addSupport,
   listusers,
   edituser,
+  updateFcmToken,
+  removeFcmToken,
+  getNotifications,
 };

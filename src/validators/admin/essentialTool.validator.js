@@ -17,6 +17,9 @@ const createEssentialTool = Joi.object({
     .try(Joi.array().items(Joi.string()), Joi.string().allow(''))
     .optional(),
   recommendedVideo: Joi.string().allow('').optional(),
+  audience: Joi.string()
+    .valid('home-owner', 'apprentice', 'licensed-plumber')
+    .optional(),
 });
 
 const updateEssentialTool = Joi.object({
@@ -36,6 +39,9 @@ const updateEssentialTool = Joi.object({
     .try(Joi.array().items(Joi.string()), Joi.string().allow(''))
     .optional(),
   recommendedVideo: Joi.string().allow('').optional(),
+  audience: Joi.string()
+    .valid('home-owner', 'apprentice', 'licensed-plumber')
+    .optional(),
 });
 
 const singleId = Joi.object({

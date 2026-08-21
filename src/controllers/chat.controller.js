@@ -29,8 +29,8 @@ const initChatRoom = catchAsync(async (req, res) => {
 
   // Populate info
   room = await room.populate([
-    { path: 'homeOwnerId', select: 'fullName profileimageurl' },
-    { path: 'plumberId', select: 'fullName profileimageurl' },
+    { path: 'homeOwnerId', select: 'fullName profileimageurl isOnline' },
+    { path: 'plumberId', select: 'fullName profileimageurl isOnline' },
     { path: 'lastMessage' },
   ]);
 
@@ -47,27 +47,113 @@ const getMyChatRooms = catchAsync(async (req, res) => {
   const userId = req.user._id;
   const role = req.user.role;
 
-  let query = {};
+  let query = { lastMessage: { $exists: true, $ne: null } };
   if (role === 'home-owner') {
-    query = { homeOwnerId: userId };
+    query.homeOwnerId = userId;
   } else if (role === 'licensed-plumber') {
-    query = { plumberId: userId };
+    query.plumberId = userId;
   } else if (role === 'admin') {
     // Admins can see all chats
-    query = {};
   } else {
     throw new ApiError('Unauthorized role for accessing chat rooms', 403);
   }
 
-  const rooms = await ChatRoom.find(query)
-    .populate('homeOwnerId', 'fullName profileimageurl')
-    .populate('plumberId', 'fullName profileimageurl')
+  const page = parseInt(req.query.page, 10) || 1;
+  const limit = parseInt(req.query.limit, 10) || 20;
+  const skip = (page - 1) * limit;
+
+  const total = await ChatRoom.countDocuments(query);
+  const totalPages = Math.ceil(total / limit) || 1;
+  const hasNextPage = page < totalPages;
+
+  const roomsList = await ChatRoom.find(query)
+    .populate('homeOwnerId', 'fullName profileimageurl isOnline')
+    .populate('plumberId', 'fullName profileimageurl isOnline')
     .populate('lastMessage')
-    .sort({ updatedAt: -1 });
+    .sort({ updatedAt: -1 })
+    .skip(skip)
+    .limit(limit);
+
+  if (roomsList.length > 0) {
+    const roomIds = roomsList.map((room) => room._id);
+    await Message.updateMany(
+      { roomId: { $in: roomIds }, senderId: { $ne: userId }, read: false },
+      { $set: { read: true } },
+    );
+  }
+
+  const formattedRooms = roomsList
+    .map((room) => {
+      // Determine the counterpart participant
+      let participantUser = null;
+      if (role === 'home-owner') {
+        participantUser = room.plumberId;
+      } else if (role === 'licensed-plumber') {
+        participantUser = room.homeOwnerId;
+      } else {
+        // Admin fallback uses plumberId if available, else homeOwnerId
+        participantUser = room.plumberId || room.homeOwnerId;
+      }
+
+      return {
+        id: room._id,
+        participant: participantUser
+          ? {
+              id: participantUser._id,
+              name: participantUser.fullName || '',
+              profileImageUrl: participantUser.profileimageurl || '',
+              isOnline: participantUser.isOnline || false,
+            }
+          : null,
+        lastMessage: (() => {
+          if (!room.lastMessage) return null;
+          let content = room.lastMessage.content
+            ? room.lastMessage.content.trim()
+            : '';
+          if (content === '' && room.lastMessage.fileUrl) {
+            const fileUrl = room.lastMessage.fileUrl;
+            let fileName = fileUrl.substring(fileUrl.lastIndexOf('/') + 1);
+            if (fileName) {
+              fileName = decodeURIComponent(fileName.split('?')[0]);
+            }
+            content = fileName || 'File';
+          }
+          return {
+            content,
+            fileUrl: room.lastMessage.fileUrl || null,
+            fileType: room.lastMessage.fileType || null,
+            senderId: room.lastMessage.senderId,
+            createdAt: room.lastMessage.createdAt,
+            read:
+              room.lastMessage.senderId.toString() === userId.toString()
+                ? room.lastMessage.read || false
+                : true,
+          };
+        })(),
+      };
+    })
+    .filter((room) => {
+      if (!room.lastMessage) return false;
+      const content = room.lastMessage.content
+        ? room.lastMessage.content.trim()
+        : '';
+      const hasFile = !!room.lastMessage.fileUrl;
+      return content !== '' || hasFile;
+    });
 
   res.status(200).send({
+    status: 200,
     message: 'Chat rooms retrieved successfully',
-    rooms,
+    data: {
+      rooms: formattedRooms,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+        hasNextPage,
+      },
+    },
   });
 });
 
@@ -93,6 +179,12 @@ const getRoomMessages = catchAsync(async (req, res) => {
     throw new ApiError('Access denied to this chat room', 403);
   }
 
+  // Mark counterpart's messages in this room as read
+  await Message.updateMany(
+    { roomId, senderId: { $ne: req.user._id }, read: false },
+    { $set: { read: true } },
+  );
+
   const messages = await Message.find({ roomId })
     .sort({ createdAt: 1 })
     .populate('senderId', 'fullName profileimageurl');
@@ -103,8 +195,30 @@ const getRoomMessages = catchAsync(async (req, res) => {
   });
 });
 
+/**
+ * Upload photo or video for chat room attachments
+ */
+const uploadChatMedia = catchAsync(async (req, res) => {
+  if (!req.file) {
+    throw new ApiError('Please upload a video or photo file', 400);
+  }
+
+  console.log('Chat media file uploaded successfully:', {
+    name: req.file.originalname,
+    type: req.file.mimetype,
+    url: req.file.location,
+  });
+
+  res.status(200).send({
+    message: 'Media uploaded successfully',
+    fileUrl: req.file.location,
+    fileType: req.file.mimetype,
+  });
+});
+
 module.exports = {
   initChatRoom,
   getMyChatRooms,
   getRoomMessages,
+  uploadChatMedia,
 };

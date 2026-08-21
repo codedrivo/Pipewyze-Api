@@ -1,5 +1,6 @@
 const EssentialTool = require('../../models/essentialTool.model');
 const ApiError = require('../../helpers/apiErrorConverter');
+const notificationService = require('../notification.service');
 
 const parseArrayFields = (data) => {
   const fields = ['bestUsedFor', 'howToUse', 'safetyTips'];
@@ -24,11 +25,27 @@ const parseArrayFields = (data) => {
 const createEssentialTool = async (data) => {
   parseArrayFields(data);
   const tool = await EssentialTool.create(data);
+
+  // Send push notification to all home-owners
+  notificationService
+    .sendToRole(
+      'home-owner',
+      'New Essential Tool Available',
+      `A new essential tool "${tool.name}" has been added by the Admin.`,
+      { toolId: tool._id.toString() },
+    )
+    .catch((err) =>
+      console.error(
+        'Failed sending notification on tool creation:',
+        err.message,
+      ),
+    );
+
   return tool;
 };
 
-const getEssentialTools = async () => {
-  const tools = await EssentialTool.find({}).sort({ createdAt: -1 });
+const getEssentialTools = async (query = {}) => {
+  const tools = await EssentialTool.find(query).sort({ createdAt: -1 });
   return tools;
 };
 
@@ -51,6 +68,8 @@ const updateEssentialToolById = async (id, data) => {
 const deleteEssentialToolById = async (id) => {
   const tool = await getEssentialToolById(id);
   await EssentialTool.deleteOne({ _id: id });
+  const SavedResource = require('../../models/savedResource.model');
+  await SavedResource.deleteMany({ resourceId: id });
   return tool;
 };
 

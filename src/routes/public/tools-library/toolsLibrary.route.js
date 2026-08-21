@@ -10,6 +10,12 @@ router.get(
   catchAsync(async (req, res) => {
     const { search } = req.query;
     const filter = {};
+    if (
+      req.user &&
+      ['home-owner', 'apprentice', 'licensed-plumber'].includes(req.user.role)
+    ) {
+      filter.audience = req.user.role;
+    }
     if (search) {
       filter.$or = [
         { name: { $regex: search, $options: 'i' } },
@@ -47,7 +53,15 @@ router.get(
   '/:id',
   auth(),
   catchAsync(async (req, res) => {
-    const tool = await EssentialTool.findById(req.params.id);
+    const { role } = req.user;
+    const filter = { _id: req.params.id };
+    if (
+      req.user &&
+      ['home-owner', 'apprentice', 'licensed-plumber'].includes(role)
+    ) {
+      filter.audience = role;
+    }
+    const tool = await EssentialTool.findOne(filter);
     if (!tool) {
       res.status(404).json({
         status: 404,

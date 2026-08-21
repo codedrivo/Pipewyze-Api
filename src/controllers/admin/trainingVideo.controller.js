@@ -1,20 +1,20 @@
 const catchAsync = require('../../helpers/asyncErrorHandler');
-const service = require('../../services/admin/trendingVideo.service');
+const service = require('../../services/admin/trainingVideo.service');
 
-const createTrendingVideo = catchAsync(async (req, res) => {
+const createTrainingVideo = catchAsync(async (req, res) => {
   const data = { ...req.body };
   if (req.file && req.file.location) {
     data.thumbnail = req.file.location;
   }
-  const video = await service.createTrendingVideo(data);
+  const video = await service.createTrainingVideo(data);
   res.status(201).json({
     status: 201,
-    message: 'Trending video created successfully',
+    message: 'Training video created successfully',
     video,
   });
 });
 
-const getTrendingVideos = catchAsync(async (req, res) => {
+const getTrainingVideos = catchAsync(async (req, res) => {
   const search = req.query.search || '';
   const targetAudience = req.query.targetAudience || '';
   const isAiVideo = req.query.isAiVideo;
@@ -28,46 +28,46 @@ const getTrendingVideos = catchAsync(async (req, res) => {
   if (isAiVideo !== undefined) {
     query.isAiVideo = isAiVideo === 'true';
   }
-  const videos = await service.getTrendingVideos(query);
+  const videos = await service.getTrainingVideos(query);
   res.status(200).json({
     status: 200,
     videos,
   });
 });
 
-const getTrendingVideo = catchAsync(async (req, res) => {
-  const video = await service.getTrendingVideoById(req.params.id);
+const getTrainingVideo = catchAsync(async (req, res) => {
+  const video = await service.getTrainingVideoById(req.params.id);
   res.status(200).json({
     status: 200,
     video,
   });
 });
 
-const updateTrendingVideo = catchAsync(async (req, res) => {
+const updateTrainingVideo = catchAsync(async (req, res) => {
   const data = { ...req.body };
   if (req.file && req.file.location) {
     data.thumbnail = req.file.location;
   }
-  const video = await service.updateTrendingVideoById(req.params.id, data);
+  const video = await service.updateTrainingVideoById(req.params.id, data);
   res.status(200).json({
     status: 200,
-    message: 'Trending video updated successfully',
+    message: 'Training video updated successfully',
     video,
   });
 });
 
-const deleteTrendingVideo = catchAsync(async (req, res) => {
-  await service.deleteTrendingVideoById(req.params.id);
+const deleteTrainingVideo = catchAsync(async (req, res) => {
+  await service.deleteTrainingVideoById(req.params.id);
   res.status(200).json({
     status: 200,
-    message: 'Trending video deleted successfully',
+    message: 'Training video deleted successfully',
   });
 });
 
 module.exports = {
-  createTrendingVideo,
-  getTrendingVideos,
-  getTrendingVideo,
-  updateTrendingVideo,
-  deleteTrendingVideo,
+  createTrainingVideo,
+  getTrainingVideos,
+  getTrainingVideo,
+  updateTrainingVideo,
+  deleteTrainingVideo,
 };

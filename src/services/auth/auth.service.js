@@ -62,7 +62,7 @@ const loginUser = async (email, password, role) => {
   if (!(await user.isPasswordMatch(password))) {
     throw new ApiError('Incorrect password', 401);
   }
-  user.online = true;
+  user.isOnline = true;
   await user.save({ validateBeforeSave: false });
   return getUserById(user._id);
 };
