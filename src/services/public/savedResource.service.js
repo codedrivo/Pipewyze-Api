@@ -108,18 +108,7 @@ const getSavedResources = async (userId, page = 1, limit = 10) => {
     .limit(limit);
 
   const mappedItems = savedItems.map((item) => {
-    const itemJson = item.toJSON ? item.toJSON() : item;
-    if (
-      (itemJson.resourceType === 'TrainingVideo' ||
-        itemJson.resourceType === 'LibraryTools') &&
-      itemJson.resourceId
-    ) {
-      itemJson.resourceType =
-        itemJson.resourceId.targetAudience ||
-        itemJson.resourceId.audience ||
-        'apprentice';
-    }
-    return itemJson;
+    return item.toJSON ? item.toJSON() : item;
   });
 
   return {
