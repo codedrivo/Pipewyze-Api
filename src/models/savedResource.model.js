@@ -20,8 +20,8 @@ const savedResourceSchema = mongoose.Schema(
       enum: [
         'TrainingVideo',
         'PlumbingCode',
-        'MaintenanceLibrary',
-        'ToolLibrary',
+        'MaintenanceGuide',
+        'LibraryTools',
       ],
     },
   },
