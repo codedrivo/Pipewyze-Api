@@ -9,6 +9,8 @@ const config = require('./config/config');
 
 const User = require('./models/user.model');
 const Setting = require('./models/setting.model');
+const axios = require('axios');
+const AiVideo = require('./models/aiVideo.model');
 const SettingModel = require('./models/setting.model');
 const ChatRoom = require('./models/chatRoom.model');
 const Message = require('./models/message.model');
@@ -990,6 +992,121 @@ mongoose.connect(config.mongoose.url).then(() => {
           }
           activeUploads.delete(uploadId);
         }
+      }
+    });
+
+    // AI Assistant socket handler
+    socket.on('ask_ai', async ({ message, userId: payloadUserId }) => {
+      const activeUserId = payloadUserId || socket.userId || userId;
+      console.log(`[ask_ai] Received event from userId: ${activeUserId}, message: "${message}"`);
+      try {
+        if (!activeUserId) {
+          console.warn('[ask_ai] User verification failed: missing user ID');
+          socket.emit('ai_error', { message: 'User verification failed (missing user ID).' });
+          return;
+        }
+
+        const user = await User.findById(activeUserId);
+        if (!user) {
+          console.warn(`[ask_ai] User not found for ID: ${activeUserId}`);
+          socket.emit('ai_error', { message: 'User not found in database.' });
+          return;
+        }
+
+        // Query AI videos targeting the user's role
+        const allVideos = await AiVideo.find({ targetAudience: user.role }).lean();
+        
+        // Optimize: Filter only relevant videos based on keywords in the query to save tokens
+        const queryWords = message.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+        const matchedVideos = allVideos.filter(v => {
+          const title = v.title.toLowerCase();
+          const desc = (v.description || '').toLowerCase();
+          return queryWords.some(w => title.includes(w) || desc.includes(w));
+        }).slice(0, 3); // Limit to top 3 videos max
+
+        // Format with Title and URL only (no descriptions) to keep context extremely small
+        const formattedVideos = matchedVideos
+          .map((v, i) => `${i + 1}. Title: "${v.title}", URL: "${v.videoUrl}"`)
+          .join('\n');
+
+        console.log(`[ask_ai] Total matching videos: ${allVideos.length}, sent as context: ${matchedVideos.length}`);
+
+        const openaiApiKey = process.env.OPENAI_API_KEY;
+        if (!openaiApiKey) {
+          console.warn('[ask_ai] OpenAI API key not configured');
+          socket.emit('ai_response', {
+            sender: 'ai',
+            message: 'AI Assistant is currently unavailable (API key not configured).',
+            suggestedVideo: null,
+          });
+          return;
+        }
+
+        // Query OpenAI Chat Completions API
+        console.log('[ask_ai] Querying OpenAI Chat Completions API...');
+        const openAiResponse = await axios.post(
+          'https://api.openai.com/v1/chat/completions',
+          {
+            model: 'gpt-4o-mini',
+            max_tokens: 120, // Limit response length to save output tokens
+            messages: [
+              {
+                role: 'system',
+                content: `You are the PipeWyze AI helper. User role: "${user.role}".
+Videos:
+${formattedVideos || 'None'}
+
+Rules:
+1. Keep replies extremely concise, clear, and under 3 sentences.
+2. If any listed video is relevant to the question, recommend it by mentioning its exact title or URL in your response. Otherwise suggest YouTube.`,
+              },
+              {
+                role: 'user',
+                content: message,
+              },
+            ],
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${openaiApiKey}`,
+              'Content-Type': 'application/json',
+            },
+          },
+        );
+
+        const aiMessage = openAiResponse.data.choices[0].message.content;
+        console.log(`[ask_ai] OpenAI Response message: "${aiMessage}"`);
+
+        // Extract which local video (if any) was recommended by matching the title or URL in the response
+        let suggestedVideo = null;
+        for (const v of allVideos) {
+          if (
+            aiMessage.includes(v.videoUrl) ||
+            aiMessage.toLowerCase().includes(v.title.toLowerCase())
+          ) {
+            suggestedVideo = {
+              id: v._id || v.id,
+              title: v.title,
+              videoUrl: v.videoUrl,
+              description: v.description,
+              thumbnail: v.thumbnail,
+            };
+            break;
+          }
+        }
+
+        if (suggestedVideo) {
+          console.log(`[ask_ai] Suggested video matched: "${suggestedVideo.title}"`);
+        }
+
+        socket.emit('ai_response', {
+          sender: 'ai',
+          message: aiMessage,
+          suggestedVideo,
+        });
+      } catch (err) {
+        console.error('[ask_ai] Error in AI assistant socket handler:', err);
+        socket.emit('ai_error', { message: 'Failed to generate response from AI Assistant.' });
       }
     });
   });
