@@ -1167,6 +1167,43 @@ mongoose.connect(config.mongoose.url).then(() => {
       console.error('Error in cron job:', err);
     }
   });
+
+  // Service reminder cron job - runs daily at 9:00 AM
+  cron.schedule('0 9 * * *', async () => {
+    try {
+      const Equipment = require('./models/equipment.model');
+      const targetDateStart = moment().add(3, 'days').startOf('day').toDate();
+      const targetDateEnd = moment().add(3, 'days').endOf('day').toDate();
+
+      const upcomingServices = await Equipment.find({
+        nextServiceDate: {
+          $gte: targetDateStart,
+          $lte: targetDateEnd,
+        },
+      });
+
+      for (const eq of upcomingServices) {
+        if (eq.ownerId) {
+          const brandModel = `${eq.brand || ''} ${eq.model || ''}`.trim() || eq.category;
+          await notificationService
+            .sendToUsers(
+              [eq.ownerId.toString()],
+              'Upcoming Equipment Service Reminder',
+              `Your ${brandModel} is scheduled for service on ${moment(eq.nextServiceDate).format('YYYY-MM-DD')}.`,
+              {
+                type: 'maintenance',
+                equipmentId: eq._id.toString(),
+              },
+            )
+            .catch((err) =>
+              console.error(`Failed sending service reminder to user ${eq.ownerId}:`, err.message),
+            );
+        }
+      }
+    } catch (err) {
+      console.error('Error in service reminder cron job:', err);
+    }
+  });
 });
 
 const exitHandler = () => {
