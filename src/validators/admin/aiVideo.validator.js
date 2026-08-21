@@ -15,7 +15,7 @@ const createVideo = Joi.object({
   description: Joi.string().allow('').optional(),
   thumbnail: Joi.string().allow('').optional(),
   targetAudience: Joi.string()
-    .valid('apprentice', 'licensed-plumber')
+    .valid('apprentice', 'licensed-plumber', 'home-owner')
     .optional(),
 });
 
@@ -26,7 +26,7 @@ const updateVideo = Joi.object({
   description: Joi.string().allow('').optional(),
   thumbnail: Joi.string().allow('').optional(),
   targetAudience: Joi.string()
-    .valid('apprentice', 'licensed-plumber')
+    .valid('apprentice', 'licensed-plumber', 'home-owner')
     .optional(),
 });
 
