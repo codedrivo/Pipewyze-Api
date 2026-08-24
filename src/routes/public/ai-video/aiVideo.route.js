@@ -3,6 +3,13 @@ const AiVideoQuestion = require('../../../models/aiVideoQuestion.model');
 const AiVideo = require('../../../models/aiVideo.model');
 const catchAsync = require('../../../helpers/asyncErrorHandler');
 const auth = require('../../../middlewares/auth.middleware');
+const aiChatController = require('../../../controllers/public/aiChat.controller');
+
+router.get(
+  '/history',
+  auth(),
+  aiChatController.getHistory
+);
 
 router.get(
   '/',
