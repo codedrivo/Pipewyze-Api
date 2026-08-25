@@ -11,13 +11,26 @@ const aiChatSchema = new mongoose.Schema(
     },
     message: {
       type: String,
-      required: true,
+      required: false,
       trim: true,
+      default: '',
     },
     response: {
       type: String,
       required: true,
       trim: true,
+    },
+    fileUrl: {
+      type: String,
+      default: '',
+    },
+    fileType: {
+      type: String,
+      default: '',
+    },
+    fileName: {
+      type: String,
+      default: '',
     },
     suggestedVideo: {
       id: { type: String, default: null },
@@ -30,7 +43,7 @@ const aiChatSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 aiChatSchema.plugin(toJSON);

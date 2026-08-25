@@ -840,149 +840,198 @@ io.on('connection', async (socket) => {
     },
   );
 
-// AI Assistant socket handler
-socket.on('ask_ai', async ({ message, userId: payloadUserId }) => {
-  const activeUserId = payloadUserId || socket.userId || userId;
+  /// AI Assistant socket handler
+  socket.on(
+    'ask_ai',
+    async ({ message, userId: payloadUserId, fileUrl, fileType, fileName }) => {
+      const activeUserId = payloadUserId || socket.userId || userId;
 
-  console.log(
-    `[ask_ai] Received event from userId: ${activeUserId}, message: "${message}"`
-  );
-
-  try {
-    const AiChat = require('./models/aiChat.model');
-
-    // Validate user ID
-    if (!activeUserId) {
-      console.warn('[ask_ai] User verification failed: missing user ID');
-
-      socket.emit('ai_error', {
-        message: 'User verification failed (missing user ID).',
-      });
-
-      return;
-    }
-
-    
-    // Validate message
-    if (!message || typeof message !== 'string' || !message.trim()) {
-      console.warn('[ask_ai] Empty AI message received');
-
-      socket.emit('ai_error', {
-        message: 'Please enter a question.',
-      });
-
-      return;
-    }
-
-    const cleanMessage = message.trim();
-
-
-    // Find user
-    const user = await User.findById(activeUserId);
-
-    if (!user) {
-      console.warn(
-        `[ask_ai] User not found for ID: ${activeUserId}`
+      console.log(
+        `[ask_ai] Received event from userId: ${activeUserId}, message: "${message}", file: "${
+          fileName || ''
+        }"`,
       );
 
-      socket.emit('ai_error', {
-        message: 'User not found in database.',
-      });
+      try {
+        const AiChat = require('./models/aiChat.model');
 
-      return;
-    }
+        // Validate user ID
+        if (!activeUserId) {
+          console.warn('[ask_ai] User verification failed: missing user ID');
 
-    // Get AI videos for user's role
-    const allVideos = await AiVideo.find({
-      targetAudience: user.role,
-    }).lean();
+          socket.emit('ai_error', {
+            message: 'User verification failed (missing user ID).',
+          });
 
-    
-    // Find relevant videos using simple keyword matching
-    const queryWords = cleanMessage
-      .toLowerCase()
-      .split(/\s+/)
-      .map((word) => word.replace(/[^\w]/g, ''))
-      .filter((word) => word.length > 3);
+          return;
+        }
 
-    const matchedVideos = allVideos
-      .filter((video) => {
-        const title = (video.title || '').toLowerCase();
-        const description = (video.description || '').toLowerCase();
+        // Validate message and media url
+        if (
+          (!message || typeof message !== 'string' || !message.trim()) &&
+          !fileUrl
+        ) {
+          console.warn('[ask_ai] Empty AI message and no file received');
 
-        return queryWords.some(
-          (word) =>
-            title.includes(word) ||
-            description.includes(word)
+          socket.emit('ai_error', {
+            message: 'Please enter a question or upload a file.',
+          });
+
+          return;
+        }
+
+        let cleanMessage = message ? message.trim() : '';
+
+        // Find user
+        const user = await User.findById(activeUserId);
+
+        if (!user) {
+          console.warn(`[ask_ai] User not found for ID: ${activeUserId}`);
+
+          socket.emit('ai_error', {
+            message: 'User not found in database.',
+          });
+
+          return;
+        }
+
+        // Handle socket media upload to S3
+        let finalFileUrl = fileUrl;
+        if (fileUrl && fileUrl.startsWith('data:')) {
+          const matches = fileUrl.match(/^data:([A-Za-z-+/]+);base64,(.+)$/);
+          if (matches && matches.length === 3) {
+            const mimeType = matches[1];
+            const base64Data = matches[2];
+            const buffer = Buffer.from(base64Data, 'base64');
+
+            const extension = mimeType.split('/').pop() || 'bin';
+            const s3Folder = mimeType.startsWith('image/')
+              ? 'images'
+              : 'videos';
+            const uniqueKey = `PipeWyze/${s3Folder}/${crypto.randomUUID()}.${extension}`;
+
+            const command = new PutObjectCommand({
+              Bucket: config.s3.S3_BUCKET_PATH,
+              Key: uniqueKey,
+              Body: buffer,
+              ContentType: mimeType,
+            });
+
+            await s3.send(command);
+
+            if (config.s3.cloudfrontUrl) {
+              const baseUrl = config.s3.cloudfrontUrl.replace(/\/$/, '');
+              finalFileUrl = `${baseUrl}/${uniqueKey}`;
+            } else {
+              finalFileUrl = `https://${config.s3.S3_BUCKET_PATH}.s3.${config.s3.region}.amazonaws.com/${uniqueKey}`;
+            }
+          }
+        }
+
+        if (!cleanMessage && finalFileUrl) {
+          let extractedFileName = fileName;
+          if (!extractedFileName) {
+            extractedFileName = finalFileUrl.substring(
+              finalFileUrl.lastIndexOf('/') + 1,
+            );
+            if (extractedFileName) {
+              extractedFileName = decodeURIComponent(
+                extractedFileName.split('?')[0],
+              );
+            }
+          }
+          cleanMessage = extractedFileName || 'File';
+        }
+
+        // Get AI videos for user's role
+        const allVideos = await AiVideo.find({
+          targetAudience: user.role,
+        }).lean();
+
+        // Find relevant videos using simple keyword matching
+        const queryWords = cleanMessage
+          .toLowerCase()
+          .split(/\s+/)
+          .map((word) => word.replace(/[^\w]/g, ''))
+          .filter((word) => word.length > 3);
+
+        const matchedVideos = allVideos
+          .filter((video) => {
+            const title = (video.title || '').toLowerCase();
+            const description = (video.description || '').toLowerCase();
+
+            return queryWords.some(
+              (word) => title.includes(word) || description.includes(word),
+            );
+          })
+          .slice(0, 3);
+
+        console.log(
+          `[ask_ai] Total videos: ${allVideos.length}, matched videos: ${matchedVideos.length}`,
         );
-      })
-      .slice(0, 3);
 
-  
-    // Keep video context small
-    const formattedVideos = matchedVideos
-      .map(
-        (video, index) =>
-          `${index + 1}. Title: "${video.title}", URL: "${video.videoUrl}"`
-      )
-      .join('\n');
+        let suggestedVideo = null;
+        let aiMessage = '';
 
-    console.log(
-      `[ask_ai] Total videos: ${allVideos.length}, matched videos: ${matchedVideos.length}`
-    );
+        // If local videos match, we suggest the top local video directly
+        if (matchedVideos.length > 0) {
+          suggestedVideo = {
+            id: matchedVideos[0]._id || matchedVideos[0].id,
+            title: matchedVideos[0].title,
+            videoUrl: matchedVideos[0].videoUrl,
+            description: matchedVideos[0].description,
+            thumbnail: matchedVideos[0].thumbnail,
+            isYoutube: false,
+          };
 
-    let suggestedVideo = null;
-    let aiMessage = '';
+          aiMessage = `I found a highly relevant video tutorial in our library to help you: "${suggestedVideo.title}". You can watch it directly by clicking the link attached below.`;
 
-    // If local videos match, we suggest the top local video directly
-    if (matchedVideos.length > 0) {
-      suggestedVideo = {
-        id: matchedVideos[0]._id || matchedVideos[0].id,
-        title: matchedVideos[0].title,
-        videoUrl: matchedVideos[0].videoUrl,
-        description: matchedVideos[0].description,
-        thumbnail: matchedVideos[0].thumbnail,
-        isYoutube: false,
-      };
+          console.log(
+            `[ask_ai] Local DB match found: "${suggestedVideo.title}". Bypassing OpenAI API.`,
+          );
 
-      aiMessage = `I found a highly relevant video tutorial in our library to help you: "${suggestedVideo.title}". You can watch it directly by clicking the link attached below.`;
-      
-      console.log(`[ask_ai] Local DB match found: "${suggestedVideo.title}". Bypassing OpenAI API.`);
+          // Save to database
+          await AiChat.create({
+            userId: activeUserId,
+            message: cleanMessage,
+            response: aiMessage,
+            suggestedVideo,
+            fileUrl: finalFileUrl || '',
+            fileType: fileType || '',
+            fileName: fileName || '',
+          });
 
-      // Save to database
-      await AiChat.create({
-        userId: activeUserId,
-        message: cleanMessage,
-        response: aiMessage,
-        suggestedVideo,
-      });
+          socket.emit('ai_response', {
+            sender: 'ai',
+            message: aiMessage,
+            suggestedVideo,
+            fileUrl: finalFileUrl || '',
+            fileType: fileType || '',
+            fileName: fileName || '',
+          });
+          return;
+        }
 
-      socket.emit('ai_response', {
-        sender: 'ai',
-        message: aiMessage,
-        suggestedVideo,
-      });
-      return;
-    }
+        console.log(
+          '[ask_ai] No local video match found in database. Querying OpenAI with YouTube fallback instructions...',
+        );
 
-    console.log('[ask_ai] No local video match found in database. Querying OpenAI with YouTube fallback instructions...');
+        // Check OpenAI API key
+        const openaiApiKey = process.env.OPENAI_API_KEY;
 
-    // Check OpenAI API key
-    const openaiApiKey = process.env.OPENAI_API_KEY;
+        if (!openaiApiKey) {
+          console.warn('[ask_ai] OpenAI API key not configured');
 
-    if (!openaiApiKey) {
-      console.warn('[ask_ai] OpenAI API key not configured');
+          socket.emit('ai_error', {
+            message:
+              'AI Assistant is currently unavailable. OpenAI API key is not configured.',
+          });
 
-      socket.emit('ai_error', {
-        message:
-          'AI Assistant is currently unavailable. OpenAI API key is not configured.',
-      });
+          return;
+        }
 
-      return;
-    }
-
-    // Prepare OpenAI request
-    const systemPrompt = `You are the PipeWyze AI helper.
+        // Prepare OpenAI request
+        const systemPrompt = `You are the PipeWyze AI helper.
 
 User role: "${user.role}"
 
@@ -997,244 +1046,255 @@ Rules:
 Ensure the link points to a good search query for the specific plumbing issue.
 `;
 
-    console.log('[ask_ai] Querying OpenAI Chat Completions API...');
+        console.log('[ask_ai] Querying OpenAI Chat Completions API...');
 
-    // 9. Call OpenAI
-    const openAiResponse = await axios.post(
-      'https://api.openai.com/v1/chat/completions',
-      {
-        model: 'gpt-4o-mini',
+        // Build OpenAI user message content (multimodal if image, or inline text representation)
+        let openAiUserContent;
+        if (finalFileUrl && fileType && fileType.startsWith('image/')) {
+          openAiUserContent = [
+            {
+              type: 'text',
+              text: cleanMessage || 'Analyze this image',
+            },
+            {
+              type: 'image_url',
+              image_url: {
+                url: finalFileUrl,
+              },
+            },
+          ];
+        } else if (finalFileUrl) {
+          openAiUserContent = `${cleanMessage} (Attached file: ${
+            fileName || 'file'
+          } - ${finalFileUrl})`.trim();
+        } else {
+          openAiUserContent = cleanMessage;
+        }
 
-        messages: [
+        // Call OpenAI
+        const openAiResponse = await axios.post(
+          'https://api.openai.com/v1/chat/completions',
           {
-            role: 'system',
-            content: systemPrompt,
+            model: 'gpt-4o-mini',
+
+            messages: [
+              {
+                role: 'system',
+                content: systemPrompt,
+              },
+              {
+                role: 'user',
+                content: openAiUserContent,
+              },
+            ],
+
+            max_tokens: 250,
+
+            temperature: 0.3,
           },
           {
-            role: 'user',
-            content: cleanMessage,
+            headers: {
+              Authorization: `Bearer ${openaiApiKey}`,
+              'Content-Type': 'application/json',
+            },
+
+            // Prevent the request from hanging indefinitely
+            timeout: 30000,
           },
-        ],
+        );
 
-        max_tokens: 250,
+        // Extract AI response safely
+        const rawAiMessage =
+          openAiResponse?.data?.choices?.[0]?.message?.content?.trim();
 
-        temperature: 0.3,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${openaiApiKey}`,
-          'Content-Type': 'application/json',
-        },
+        if (!rawAiMessage) {
+          console.error('[ask_ai] OpenAI returned an empty response');
 
-        // Prevent the request from hanging indefinitely
-        timeout: 30000,
-      }
-    );
+          socket.emit('ai_error', {
+            message: 'AI Assistant returned an empty response.',
+          });
 
-  
-    // Extract AI response safely
-    const rawAiMessage =
-      openAiResponse?.data?.choices?.[0]?.message?.content?.trim();
+          return;
+        }
 
-    if (!rawAiMessage) {
-      console.error('[ask_ai] OpenAI returned an empty response');
+        console.log(`[ask_ai] OpenAI Raw response: "${rawAiMessage}"`);
 
-      socket.emit('ai_error', {
-        message: 'AI Assistant returned an empty response.',
-      });
+        // Parse the JSON blocks out of rawAiMessage if any
+        let cleanResponseText = rawAiMessage;
+        const jsonMatch = rawAiMessage.match(/\{[\s\S]*?\}/);
+        if (jsonMatch) {
+          try {
+            const parsedJson = JSON.parse(jsonMatch[0]);
+            if (parsedJson.youtubeUrl) {
+              suggestedVideo = {
+                id: null,
+                title: parsedJson.youtubeTitle || 'YouTube Demonstration',
+                videoUrl: parsedJson.youtubeUrl,
+                description: 'YouTube search result for demonstration',
+                thumbnail: '',
+                isYoutube: true,
+              };
+            }
+            cleanResponseText = rawAiMessage
+              .replace(/```json[\s\S]*?```|```[\s\S]*?```|\{[\s\S]*?\}/g, '')
+              .trim();
+          } catch (err) {
+            console.error(
+              '[ask_ai] Failed to parse JSON block from OpenAI response:',
+              err,
+            );
+          }
+        }
 
-      return;
-    }
-
-    console.log(
-      `[ask_ai] OpenAI Raw response: "${rawAiMessage}"`
-    );
-
-    // Parse the JSON blocks out of rawAiMessage if any
-    let cleanResponseText = rawAiMessage;
-    const jsonMatch = rawAiMessage.match(/\{[\s\S]*?\}/);
-    if (jsonMatch) {
-      try {
-        const parsedJson = JSON.parse(jsonMatch[0]);
-        if (parsedJson.youtubeUrl) {
+        if (!suggestedVideo) {
+          // Fallback fallback if JSON extraction fails: construct search query from prompt words
+          const searchQuery = encodeURIComponent(cleanMessage);
           suggestedVideo = {
             id: null,
-            title: parsedJson.youtubeTitle || 'YouTube Demonstration',
-            videoUrl: parsedJson.youtubeUrl,
-            description: 'YouTube search result for demonstration',
+            title: 'Search YouTube',
+            videoUrl: `https://www.youtube.com/results?search_query=${searchQuery}`,
+            description: 'Watch video tutorials on YouTube',
             thumbnail: '',
             isYoutube: true,
           };
         }
-        cleanResponseText = rawAiMessage.replace(/```json[\s\S]*?```|```[\s\S]*?```|\{[\s\S]*?\}/g, '').trim();
+
+        aiMessage =
+          cleanResponseText || 'Here is a video demonstrating the solution:';
+
+        // Save to database
+        await AiChat.create({
+          userId: activeUserId,
+          message: cleanMessage,
+          response: aiMessage,
+          suggestedVideo,
+          fileUrl: finalFileUrl || '',
+          fileType: fileType || '',
+          fileName: fileName || '',
+        });
+
+        // Send successful response to frontend
+        socket.emit('ai_response', {
+          sender: 'ai',
+          message: aiMessage,
+          suggestedVideo,
+          fileUrl: finalFileUrl || '',
+          fileType: fileType || '',
+          fileName: fileName || '',
+        });
       } catch (err) {
-        console.error('[ask_ai] Failed to parse JSON block from OpenAI response:', err);
-      }
-    }
+        // ERROR HANDLING
+        console.error('[ask_ai] AI Assistant error:', err.message);
 
-    if (!suggestedVideo) {
-      // Fallback fallback if JSON extraction fails: construct search query from prompt words
-      const searchQuery = encodeURIComponent(cleanMessage);
-      suggestedVideo = {
-        id: null,
-        title: 'Search YouTube',
-        videoUrl: `https://www.youtube.com/results?search_query=${searchQuery}`,
-        description: 'Watch video tutorials on YouTube',
-        thumbnail: '',
-        isYoutube: true,
-      };
-    }
+        // OpenAI HTTP errors
+        if (err.response) {
+          const status = err.response.status;
+          const data = err.response.data;
 
-    aiMessage = cleanResponseText || 'Here is a video demonstrating the solution:';
+          console.error('[ask_ai] OpenAI response status:', status);
+          console.error('[ask_ai] OpenAI response data:', data);
 
-    // Save to database
-    await AiChat.create({
-      userId: activeUserId,
-      message: cleanMessage,
-      response: aiMessage,
-      suggestedVideo,
-    });
+          // 429 - Too Many Requests / Quota / Rate Limit
+          if (status === 429) {
+            console.warn('[ask_ai] OpenAI returned 429 Too Many Requests');
 
-    // Send successful response to frontend
-    socket.emit('ai_response', {
-      sender: 'ai',
-      message: aiMessage,
-      suggestedVideo,
-    });
-  } catch (err) {
+            socket.emit('ai_error', {
+              message:
+                'AI service is temporarily unavailable. Please try again shortly.',
+              code: 'OPENAI_RATE_LIMIT',
+            });
 
-    // ERROR HANDLING
-    console.error('[ask_ai] AI Assistant error:', err.message);
+            return;
+          }
 
-    // OpenAI HTTP errors
-    if (err.response) {
-      const status = err.response.status;
-      const data = err.response.data;
+          // 401 - Invalid API key
+          if (status === 401) {
+            console.error('[ask_ai] OpenAI API key is invalid or unauthorized');
 
-      console.error('[ask_ai] OpenAI response status:', status);
-      console.error('[ask_ai] OpenAI response data:', data);
+            socket.emit('ai_error', {
+              message:
+                'AI Assistant configuration error. Please contact the administrator.',
+              code: 'OPENAI_AUTH_ERROR',
+            });
 
+            return;
+          }
 
-      // 429 - Too Many Requests / Quota / Rate Limit
-      if (status === 429) {
-        console.warn(
-          '[ask_ai] OpenAI returned 429 Too Many Requests'
-        );
+          // 403 - Permission error
+          if (status === 403) {
+            console.error('[ask_ai] OpenAI API request was forbidden');
 
-        socket.emit('ai_error', {
-          message:
-            'AI service is temporarily unavailable. Please try again shortly.',
-          code: 'OPENAI_RATE_LIMIT',
-        });
+            socket.emit('ai_error', {
+              message:
+                'AI Assistant does not have permission to process this request.',
+              code: 'OPENAI_FORBIDDEN',
+            });
 
-        return;
-      }
+            return;
+          }
 
+          // 400 - Bad request
+          if (status === 400) {
+            console.error('[ask_ai] OpenAI rejected the request');
 
-      // 401 - Invalid API key
-      if (status === 401) {
-        console.error(
-          '[ask_ai] OpenAI API key is invalid or unauthorized'
-        );
+            socket.emit('ai_error', {
+              message:
+                'The AI request was invalid. Please try asking the question differently.',
+              code: 'OPENAI_BAD_REQUEST',
+            });
 
-        socket.emit('ai_error', {
-          message:
-            'AI Assistant configuration error. Please contact the administrator.',
-          code: 'OPENAI_AUTH_ERROR',
-        });
+            return;
+          }
 
-        return;
-      }
+          // 500 / 502 / 503 - OpenAI server problems
+          if (status >= 500) {
+            console.error(`[ask_ai] OpenAI server error: ${status}`);
 
+            socket.emit('ai_error', {
+              message:
+                'AI service is temporarily unavailable. Please try again later.',
+              code: 'OPENAI_SERVER_ERROR',
+            });
 
-      // 403 - Permission error
-      if (status === 403) {
-        console.error(
-          '[ask_ai] OpenAI API request was forbidden'
-        );
+            return;
+          }
+        }
 
-        socket.emit('ai_error', {
-          message:
-            'AI Assistant does not have permission to process this request.',
-          code: 'OPENAI_FORBIDDEN',
-        });
+        // Axios timeout
+        if (err.code === 'ECONNABORTED') {
+          console.error('[ask_ai] OpenAI request timed out');
 
-        return;
-      }
+          socket.emit('ai_error', {
+            message: 'AI Assistant took too long to respond. Please try again.',
+            code: 'OPENAI_TIMEOUT',
+          });
 
-      // 400 - Bad request
-      if (status === 400) {
-        console.error(
-          '[ask_ai] OpenAI rejected the request'
-        );
+          return;
+        }
 
-        socket.emit('ai_error', {
-          message:
-            'The AI request was invalid. Please try asking the question differently.',
-          code: 'OPENAI_BAD_REQUEST',
-        });
+        // Network error
+        if (err.request && !err.response) {
+          console.error('[ask_ai] No response received from OpenAI');
 
-        return;
-      }
+          socket.emit('ai_error', {
+            message:
+              'Unable to connect to the AI service. Please try again later.',
+            code: 'OPENAI_NETWORK_ERROR',
+          });
 
+          return;
+        }
 
-      // 500 / 502 / 503 - OpenAI server problems
-      if (status >= 500) {
-        console.error(
-          `[ask_ai] OpenAI server error: ${status}`
-        );
+        // Unknown error
+        console.error('[ask_ai] Unknown error:', err.message);
 
         socket.emit('ai_error', {
-          message:
-            'AI service is temporarily unavailable. Please try again later.',
-          code: 'OPENAI_SERVER_ERROR',
+          message: 'Failed to generate response from AI Assistant.',
+          code: 'AI_UNKNOWN_ERROR',
         });
-
-        return;
       }
-    }
-
-    // Axios timeout
-    if (err.code === 'ECONNABORTED') {
-      console.error('[ask_ai] OpenAI request timed out');
-
-      socket.emit('ai_error', {
-        message:
-          'AI Assistant took too long to respond. Please try again.',
-        code: 'OPENAI_TIMEOUT',
-      });
-
-      return;
-    }
-
-    // Network error
-    if (err.request && !err.response) {
-      console.error(
-        '[ask_ai] No response received from OpenAI'
-      );
-
-      socket.emit('ai_error', {
-        message:
-          'Unable to connect to the AI service. Please try again later.',
-        code: 'OPENAI_NETWORK_ERROR',
-      });
-
-      return;
-    }
-
-    // Unknown error
-    console.error(
-      '[ask_ai] Unknown error:',
-      err.message
-    );
-
-    socket.emit('ai_error', {
-      message:
-        'Failed to generate response from AI Assistant.',
-      code: 'AI_UNKNOWN_ERROR',
-    });
-  }
-});
+    },
+  );
 
   socket.on('disconnect', async () => {
     console.log('user disconnected:', socket.id);
