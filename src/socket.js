@@ -1037,13 +1037,14 @@ User role: "${user.role}"
 
 Rules:
 1. Answer the user's question clearly, professionally, and keep it under 3 sentences.
-2. Since we do not have an internal database video for this query, you MUST provide a helpful YouTube search link that demonstrates the solution.
-3. Your response MUST end with a JSON object wrapped in code block that gives the suggested YouTube fallback video title and link, structured exactly like:
+2. If the user's query is a general greeting, appreciation, or conversational message (e.g. "hi", "hello", "thanks", "how are you"), reply normally and politely. Do NOT provide a YouTube link.
+3. If the user is asking a technical plumbing question, provide a helpful YouTube search link that demonstrates the solution.
+4. Your response MUST end with a JSON object wrapped in code block structured exactly like:
 {
   "youtubeTitle": "YouTube Demonstration Title",
   "youtubeUrl": "https://www.youtube.com/results?search_query=..."
 }
-Ensure the link points to a good search query for the specific plumbing issue.
+For general conversation or greetings, you MUST set "youtubeUrl" to null.
 `;
 
         console.log('[ask_ai] Querying OpenAI Chat Completions API...');
@@ -1122,9 +1123,11 @@ Ensure the link points to a good search query for the specific plumbing issue.
         // Parse the JSON blocks out of rawAiMessage if any
         let cleanResponseText = rawAiMessage;
         const jsonMatch = rawAiMessage.match(/\{[\s\S]*?\}/);
+        let hasCheckedVideo = false;
         if (jsonMatch) {
           try {
             const parsedJson = JSON.parse(jsonMatch[0]);
+            hasCheckedVideo = true;
             if (parsedJson.youtubeUrl) {
               suggestedVideo = {
                 id: null,
@@ -1134,6 +1137,8 @@ Ensure the link points to a good search query for the specific plumbing issue.
                 thumbnail: '',
                 isYoutube: true,
               };
+            } else {
+              suggestedVideo = null;
             }
             cleanResponseText = rawAiMessage
               .replace(/```json[\s\S]*?```|```[\s\S]*?```|\{[\s\S]*?\}/g, '')
@@ -1146,7 +1151,7 @@ Ensure the link points to a good search query for the specific plumbing issue.
           }
         }
 
-        if (!suggestedVideo) {
+        if (!suggestedVideo && !hasCheckedVideo) {
           // Fallback fallback if JSON extraction fails: construct search query from prompt words
           const searchQuery = encodeURIComponent(cleanMessage);
           suggestedVideo = {
