@@ -109,13 +109,18 @@ const sendToUsers = async (userIds, title, body, data = {}) => {
     const promises = users.map(async (user) => {
       // Save notification to DB
       try {
-        await Notification.create({
+        const notification = await Notification.create({
           userId: user._id,
           title,
           body,
           data,
           type: data.type || (data.roomId ? 'chat' : 'system'),
         });
+
+        // Emit real-time notification via Socket.IO
+        if (global.io) {
+          global.io.to(`user_${user._id.toString()}`).emit('new_notification', notification);
+        }
       } catch (dbErr) {
         console.error('Failed saving notification to DB:', dbErr.message);
       }
@@ -149,13 +154,18 @@ const sendToRole = async (role, title, body, data = {}) => {
     const promises = users.map(async (user) => {
       // Save notification to DB
       try {
-        await Notification.create({
+        const notification = await Notification.create({
           userId: user._id,
           title,
           body,
           data,
           type: data.type || (data.roomId ? 'chat' : 'system'),
         });
+
+        // Emit real-time notification via Socket.IO
+        if (global.io) {
+          global.io.to(`user_${user._id.toString()}`).emit('new_notification', notification);
+        }
       } catch (dbErr) {
         console.error('Failed saving notification to DB:', dbErr.message);
       }
