@@ -131,6 +131,7 @@ mongoose.connect(config.mongoose.url).then(() => {
 
     if (userId) {
       socket.userId = userId;
+      socket.join(`user_${userId}`);
       // Set user online state in DB
       User.findByIdAndUpdate(userId, { isOnline: true })
         .exec()
@@ -156,6 +157,7 @@ mongoose.connect(config.mongoose.url).then(() => {
     socket.on('user_connected', async ({ userId: connectedUserId }) => {
       if (!connectedUserId) return;
       socket.userId = connectedUserId;
+      socket.join(`user_${connectedUserId}`);
       try {
         await User.findByIdAndUpdate(connectedUserId, { isOnline: true });
         console.log(
