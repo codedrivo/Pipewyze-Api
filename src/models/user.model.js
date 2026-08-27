@@ -63,6 +63,16 @@ const userSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    isProfileCompleted: {
+      type: Boolean,
+      default: function () {
+        const role = this.role || 'home-owner';
+        if (role === 'licensed-plumber') {
+          return false;
+        }
+        return true;
+      },
+    },
   },
   {
     timestamps: true,
