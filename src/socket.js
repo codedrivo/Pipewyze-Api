@@ -89,8 +89,6 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 
 io.on('connection', async (socket) => {
-  console.log('a user is connected:', socket.id);
-
   // Automatically join the socket to user's chat rooms on connection asynchronously
   let userId = socket.handshake.query.userId;
   const token = socket.handshake.auth?.token || socket.handshake.query?.token;
@@ -113,9 +111,18 @@ io.on('connection', async (socket) => {
     }
   }
 
+  console.log('========================================');
+  console.log('[Socket] Client connected');
+  console.log('[Socket] Socket ID:', socket.id);
+  console.log('[Socket] User ID:', userId);
+  console.log('========================================');
+
   if (userId) {
     socket.userId = userId;
-    socket.join(`user_${userId}`);
+    const roomName = `user_${userId.toString()}`;
+    socket.join(roomName);
+    console.log(`[Socket] Joined room: ${roomName}`);
+    console.log(`[Socket] Rooms for socket:`, Array.from(socket.rooms));
     // Set user online state in DB
     User.findByIdAndUpdate(userId, { isOnline: true })
       .exec()
