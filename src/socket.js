@@ -184,6 +184,7 @@ io.on('connection', async (socket) => {
         return;
       }
       socket.userId = activeUserId;
+      socket.join(`user_${activeUserId}`);
     }
 
     try {

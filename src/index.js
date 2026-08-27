@@ -203,6 +203,7 @@ mongoose.connect(config.mongoose.url).then(() => {
           return;
         }
         socket.userId = activeUserId;
+        socket.join(`user_${activeUserId}`);
       }
 
       try {
@@ -484,6 +485,7 @@ mongoose.connect(config.mongoose.url).then(() => {
       }
 
       socket.join(groupId);
+      socket.join(`user_${userId}`);
 
       // Send updated user list to group
       io.to(groupId).emit(
