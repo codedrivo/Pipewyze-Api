@@ -97,15 +97,15 @@ const unsaveResource = async (userId, resourceId) => {
  * @returns {Promise<object>}
  */
 const getSavedResources = async (userId, page = 1, limit = 10) => {
-  const skip = (page - 1) * limit;
+  // const skip = (page - 1) * limit;
   const query = { userId };
   const totalResults = await SavedResource.countDocuments(query);
 
   const savedItems = await SavedResource.find(query)
     .populate('resourceId')
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(limit);
+    .sort({ createdAt: -1 });
+    // .skip(skip)
+    // .limit(limit);
 
   const mappedItems = savedItems.map((item) => {
     return item.toJSON ? item.toJSON() : item;
@@ -114,8 +114,8 @@ const getSavedResources = async (userId, page = 1, limit = 10) => {
   return {
     results: mappedItems,
     page,
-    limit,
-    totalPages: Math.ceil(totalResults / limit),
+    limit: totalResults,
+    totalPages: 1,
     totalResults,
   };
 };
