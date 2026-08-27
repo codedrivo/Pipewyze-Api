@@ -206,8 +206,26 @@ const updateUser = async (id, data) => {
     );
   }
 
-  // Ensure isProfileCompleted is set to true
-  data.isProfileCompleted = true;
+  // Ensure isProfileCompleted is set appropriately
+  if (existingUser.role === 'licensed-plumber') {
+    const LicensedPlumberProfile = require('../../models/licensedPlumberProfile.model');
+    const profile = await LicensedPlumberProfile.findOne({ userId: id });
+    if (profile) {
+      const isComplete = !!(
+        profile.yearsOfService &&
+        profile.yearsOfService.toString().trim() !== '' &&
+        profile.serviceLocations &&
+        profile.serviceLocations.length > 0 &&
+        profile.servicesOffered &&
+        profile.servicesOffered.length > 0
+      );
+      data.isProfileCompleted = isComplete;
+    } else {
+      data.isProfileCompleted = false;
+    }
+  } else {
+    data.isProfileCompleted = true;
+  }
 
   const updatedUser = await User.findByIdAndUpdate(
     id,

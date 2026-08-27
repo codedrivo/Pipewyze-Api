@@ -140,6 +140,19 @@ const updateLicensedPlumberById = async (id, updateBody) => {
 
   await profile.save();
 
+  // Check if profile is completed
+  const isComplete = !!(
+    profile.yearsOfService &&
+    profile.yearsOfService.toString().trim() !== '' &&
+    profile.serviceLocations &&
+    profile.serviceLocations.length > 0 &&
+    profile.servicesOffered &&
+    profile.servicesOffered.length > 0
+  );
+
+  user.isProfileCompleted = isComplete;
+  await user.save();
+
   return {
     ...user.toJSON(),
     yearsOfService: profile.yearsOfService,
