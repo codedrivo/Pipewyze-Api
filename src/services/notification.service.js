@@ -121,9 +121,13 @@ const sendToUsers = async (userIds, title, body, data = {}) => {
         if (global.io) {
           const roomName = `user_${user._id.toString()}`;
           const room = global.io.sockets.adapter.rooms.get(roomName);
-          if (room && room.size > 0) {
-            console.log(`[Socket Notification] Emitting new_notification to active socket for user: ${user._id}`);
-          }
+          console.log('========================================');
+          console.log('[Socket Notification]');
+          console.log('User ID:', user._id.toString());
+          console.log('Room:', roomName);
+          console.log('Connected sockets:', room ? Array.from(room) : []);
+          console.log('Room size:', room ? room.size : 0);
+          console.log('========================================');
           global.io.to(roomName).emit('new_notification', notification);
         }
       } catch (dbErr) {
@@ -171,9 +175,13 @@ const sendToRole = async (role, title, body, data = {}) => {
         if (global.io) {
           const roomName = `user_${user._id.toString()}`;
           const room = global.io.sockets.adapter.rooms.get(roomName);
-          if (room && room.size > 0) {
-            console.log(`[Socket Notification] Emitting new_notification to active socket for user: ${user._id}`);
-          }
+          console.log('========================================');
+          console.log('[Socket Notification]');
+          console.log('User ID:', user._id.toString());
+          console.log('Room:', roomName);
+          console.log('Connected sockets:', room ? Array.from(room) : []);
+          console.log('Room size:', room ? room.size : 0);
+          console.log('========================================');
           global.io.to(roomName).emit('new_notification', notification);
         }
       } catch (dbErr) {
