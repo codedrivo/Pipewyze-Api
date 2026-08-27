@@ -119,7 +119,12 @@ const sendToUsers = async (userIds, title, body, data = {}) => {
 
         // Emit real-time notification via Socket.IO
         if (global.io) {
-          global.io.to(`user_${user._id.toString()}`).emit('new_notification', notification);
+          const roomName = `user_${user._id.toString()}`;
+          const room = global.io.sockets.adapter.rooms.get(roomName);
+          if (room && room.size > 0) {
+            console.log(`[Socket Notification] Emitting new_notification to active socket for user: ${user._id}`);
+          }
+          global.io.to(roomName).emit('new_notification', notification);
         }
       } catch (dbErr) {
         console.error('Failed saving notification to DB:', dbErr.message);
@@ -164,7 +169,12 @@ const sendToRole = async (role, title, body, data = {}) => {
 
         // Emit real-time notification via Socket.IO
         if (global.io) {
-          global.io.to(`user_${user._id.toString()}`).emit('new_notification', notification);
+          const roomName = `user_${user._id.toString()}`;
+          const room = global.io.sockets.adapter.rooms.get(roomName);
+          if (room && room.size > 0) {
+            console.log(`[Socket Notification] Emitting new_notification to active socket for user: ${user._id}`);
+          }
+          global.io.to(roomName).emit('new_notification', notification);
         }
       } catch (dbErr) {
         console.error('Failed saving notification to DB:', dbErr.message);
