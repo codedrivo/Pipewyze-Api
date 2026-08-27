@@ -345,7 +345,7 @@ io.on('connection', async (socket) => {
         let finalContent = content;
 
         if (fileUrl && fileUrl.startsWith('data:')) {
-          const matches = fileUrl.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+          const matches = fileUrl.match(/^data:([^;]+);base64,([\s\S]+)$/);
           if (matches && matches.length === 3) {
             const mimeType = matches[1];
             const base64Data = matches[2];
@@ -898,7 +898,7 @@ io.on('connection', async (socket) => {
         // Handle socket media upload to S3
         let finalFileUrl = fileUrl;
         if (fileUrl && fileUrl.startsWith('data:')) {
-          const matches = fileUrl.match(/^data:([A-Za-z-+/]+);base64,(.+)$/);
+          const matches = fileUrl.match(/^data:([^;]+);base64,([\s\S]+)$/);
           if (matches && matches.length === 3) {
             const mimeType = matches[1];
             const base64Data = matches[2];
