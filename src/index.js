@@ -127,18 +127,9 @@ mongoose.connect(config.mongoose.url).then(() => {
       }
     }
 
-    console.log('========================================');
-    console.log('[Socket] Client connected');
-    console.log('[Socket] Socket ID:', socket.id);
-    console.log('[Socket] User ID:', userId);
-    console.log('========================================');
-
     if (userId) {
       socket.userId = userId;
-      const roomName = `user_${userId.toString()}`;
-      socket.join(roomName);
-      console.log(`[Socket] Joined room: ${roomName}`);
-      console.log(`[Socket] Rooms for socket:`, Array.from(socket.rooms));
+      socket.join(`user_${userId}`);
       // Set user online state in DB
       User.findByIdAndUpdate(userId, { isOnline: true })
         .exec()

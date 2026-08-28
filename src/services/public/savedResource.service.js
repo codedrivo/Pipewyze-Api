@@ -104,8 +104,8 @@ const getSavedResources = async (userId, page = 1, limit = 10) => {
   const savedItems = await SavedResource.find(query)
     .populate('resourceId')
     .sort({ createdAt: -1 });
-    // .skip(skip)
-    // .limit(limit);
+  // .skip(skip)
+  // .limit(limit);
 
   const mappedItems = savedItems.map((item) => {
     return item.toJSON ? item.toJSON() : item;

@@ -26,7 +26,8 @@ const notificationSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      default: 'system', // e.g., 'system', 'chat'
+      enum: ['system', 'chat', 'ai_chat', 'maintenance'],
+      default: 'system',
       trim: true,
     },
     read: {

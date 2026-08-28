@@ -223,7 +223,10 @@ const getNotifications = catchAsync(async (req, res) => {
   const skip = (page - 1) * limit;
 
   // Mark unread notifications as read
-  await Notification.updateMany({ userId, read: false }, { $set: { read: true } });
+  await Notification.updateMany(
+    { userId, read: false },
+    { $set: { read: true } },
+  );
 
   const total = await Notification.countDocuments({ userId });
   const notifications = await Notification.find({ userId })

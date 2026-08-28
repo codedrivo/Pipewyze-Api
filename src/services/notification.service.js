@@ -23,8 +23,6 @@ admin.initializeApp({
   }),
 });
 
-console.log('Firebase Admin SDK initialized successfully.');
-
 /**
  * Removes an invalid FCM token from a user's token list
  * @param {string} userId
@@ -35,7 +33,6 @@ const cleanInvalidToken = async (userId, token) => {
     await User.findByIdAndUpdate(userId, {
       $pull: { fcmTokens: token },
     });
-    console.log(`Cleaned invalid FCM token for user ${userId}`);
   } catch (error) {
     console.error(
       `Failed to clean invalid FCM token for user ${userId}:`,
@@ -114,21 +111,20 @@ const sendToUsers = async (userIds, title, body, data = {}) => {
           title,
           body,
           data,
-          type: data.type || (data.roomId ? 'chat' : 'system'),
+          type:
+            data.type ||
+            (data.roomId
+              ? 'chat'
+              : data.isAiChat || data.isAi
+              ? 'ai_chat'
+              : 'system'),
         });
 
         // Emit real-time notification via Socket.IO
         if (global.io) {
-          const roomName = `user_${user._id.toString()}`;
-          const room = global.io.sockets.adapter.rooms.get(roomName);
-          console.log('========================================');
-          console.log('[Socket Notification]');
-          console.log('User ID:', user._id.toString());
-          console.log('Room:', roomName);
-          console.log('Connected sockets:', room ? Array.from(room) : []);
-          console.log('Room size:', room ? room.size : 0);
-          console.log('========================================');
-          global.io.to(roomName).emit('new_notification', notification);
+          global.io
+            .to(`user_${user._id.toString()}`)
+            .emit('new_notification', notification);
         }
       } catch (dbErr) {
         console.error('Failed saving notification to DB:', dbErr.message);
@@ -168,21 +164,20 @@ const sendToRole = async (role, title, body, data = {}) => {
           title,
           body,
           data,
-          type: data.type || (data.roomId ? 'chat' : 'system'),
+          type:
+            data.type ||
+            (data.roomId
+              ? 'chat'
+              : data.isAiChat || data.isAi
+              ? 'ai_chat'
+              : 'system'),
         });
 
         // Emit real-time notification via Socket.IO
         if (global.io) {
-          const roomName = `user_${user._id.toString()}`;
-          const room = global.io.sockets.adapter.rooms.get(roomName);
-          console.log('========================================');
-          console.log('[Socket Notification]');
-          console.log('User ID:', user._id.toString());
-          console.log('Room:', roomName);
-          console.log('Connected sockets:', room ? Array.from(room) : []);
-          console.log('Room size:', room ? room.size : 0);
-          console.log('========================================');
-          global.io.to(roomName).emit('new_notification', notification);
+          global.io
+            .to(`user_${user._id.toString()}`)
+            .emit('new_notification', notification);
         }
       } catch (dbErr) {
         console.error('Failed saving notification to DB:', dbErr.message);
