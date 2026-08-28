@@ -420,7 +420,17 @@ io.on('connection', async (socket) => {
             ? room.plumberId
             : room.homeOwnerId;
 
+        // Also emit new_message to counterpart's user room in case they are not in the active chat room socket
+        io.to(`user_${counterpartId.toString()}`).emit('new_message', populatedMessage);
+
         const senderName = senderUser ? senderUser.fullName : 'Someone';
+
+        // Emit chat_notification for in-app toast/banner alerts when outside the chat route
+        io.to(`user_${counterpartId.toString()}`).emit('chat_notification', {
+          roomId,
+          senderName,
+          message: populatedMessage,
+        });
 
         notificationService
           .sendToUsers(
@@ -790,8 +800,18 @@ io.on('connection', async (socket) => {
                     ? room.plumberId
                     : room.homeOwnerId;
 
+                // Also emit new_message to counterpart's user room
+                io.to(`user_${counterpartId.toString()}`).emit('new_message', populatedMessage);
+
                 const senderUser = await User.findById(upload.senderId);
                 const senderName = senderUser ? senderUser.fullName : 'Someone';
+
+                // Emit chat_notification for in-app toast/banner alerts when outside the chat route
+                io.to(`user_${counterpartId.toString()}`).emit('chat_notification', {
+                  roomId: upload.roomId.toString(),
+                  senderName,
+                  message: populatedMessage,
+                });
 
                 notificationService
                   .sendToUsers(
@@ -1010,6 +1030,36 @@ io.on('connection', async (socket) => {
             fileType: fileType || '',
             fileName: fileName || '',
           });
+
+          // Send push notification for AI response
+          notificationService
+            .sendToUsers(
+              [activeUserId.toString()],
+              'AI Assistant Response',
+              aiMessage,
+              {
+                type: 'ai_chat',
+                isAiChat: 'true',
+              },
+            )
+            .catch((err) =>
+              console.error('Failed sending AI chat notification:', err.message),
+            );
+
+          // Emit chat_notification for in-app toast/banner alerts when outside the chat route
+          io.to(`user_${activeUserId.toString()}`).emit('chat_notification', {
+            roomId: 'ai',
+            senderName: 'AI Assistant',
+            message: {
+              sender: 'ai',
+              message: aiMessage,
+              suggestedVideo,
+              fileUrl: finalFileUrl || '',
+              fileType: fileType || '',
+              fileName: fileName || '',
+              createdAt: new Date(),
+            },
+          });
           return;
         }
 
@@ -1187,6 +1237,36 @@ For general conversation or greetings, you MUST set "youtubeUrl" to null.
           fileUrl: finalFileUrl || '',
           fileType: fileType || '',
           fileName: fileName || '',
+        });
+
+        // Send push notification for AI response
+        notificationService
+          .sendToUsers(
+            [activeUserId.toString()],
+            'AI Assistant Response',
+            aiMessage,
+            {
+              type: 'ai_chat',
+              isAiChat: 'true',
+            },
+          )
+          .catch((err) =>
+            console.error('Failed sending AI chat notification:', err.message),
+          );
+
+        // Emit chat_notification for in-app toast/banner alerts when outside the chat route
+        io.to(`user_${activeUserId.toString()}`).emit('chat_notification', {
+          roomId: 'ai',
+          senderName: 'AI Assistant',
+          message: {
+            sender: 'ai',
+            message: aiMessage,
+            suggestedVideo,
+            fileUrl: finalFileUrl || '',
+            fileType: fileType || '',
+            fileName: fileName || '',
+            createdAt: new Date(),
+          },
         });
       } catch (err) {
         // ERROR HANDLING
