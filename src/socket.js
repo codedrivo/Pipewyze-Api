@@ -2086,125 +2086,247 @@ io.on('connection', async (socket) => {
   // ---------------------------------------------------------------------------
   // EVENT: send_message (Base64 Media & Text Chat)
   // ---------------------------------------------------------------------------
+  // socket.on('send_message', async ({ roomId, senderId, receiverId, content, fileUrl, fileType, fileName }) => {
+  //   try {
+  //     if (!roomId || !senderId || (!content && !fileUrl)) {
+  //       socket.emit('chat_error', { message: 'Missing roomId, senderId, or content/file.' });
+  //       return;
+  //     }
+
+  //     const senderUser = await User.findById(senderId);
+  //     if (!senderUser) {
+  //       socket.emit('chat_error', { message: 'Sender not found.' });
+  //       return;
+  //     }
+
+  //     let room = await ChatRoom.findById(roomId);
+  //     if (!room && receiverId) {
+  //       const sRole = senderUser.role;
+  //       const homeOwnerId = sRole === 'licensed-plumber' ? receiverId : senderId;
+  //       const plumberId = sRole === 'licensed-plumber' ? senderId : receiverId;
+
+  //       room = await ChatRoom.create({ _id: roomId, homeOwnerId, plumberId });
+  //       const sockets = await io.fetchSockets();
+  //       sockets.forEach((s) => s.join(roomId));
+  //     }
+
+  //     socket.join(roomId);
+
+  //     let finalFileUrl = null;
+  //     let finalFileType = fileType || null;
+
+  //     // Handle Base64 strings vs direct HTTP/S3 URLs
+  //     if (fileUrl) {
+  //       if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
+  //         finalFileUrl = fileUrl;
+  //       } else {
+  //         try {
+  //           console.log(`[Media Upload] Processing Base64 media for room: ${roomId}`);
+  //           const uploadResult = await uploadBase64ToS3(fileUrl, fileType);
+  //           finalFileUrl = uploadResult.fileUrl;
+  //           finalFileType = uploadResult.fileType;
+  //           console.log(`[Media Upload] S3 upload successful: ${finalFileUrl}`);
+  //         } catch (uploadErr) {
+  //           console.error('[Media Upload Error] S3 upload failed:', uploadErr.message);
+  //           socket.emit('chat_error', { message: 'Media upload failed.' });
+  //           return;
+  //         }
+  //       }
+  //     }
+
+  //     // Infer fileType from URL extension if not supplied
+  //     if (!finalFileType && finalFileUrl) {
+  //       const cleanUrl = finalFileUrl.split('?')[0].toLowerCase();
+  //       if (/\.(mp4|mov|quicktime|webm|m4v|3gp)$/.test(cleanUrl)) {
+  //         finalFileType = 'video/mp4';
+  //       } else if (/\.(jpg|jpeg|png|gif|webp|heic|heif)$/.test(cleanUrl)) {
+  //         finalFileType = 'image/jpeg';
+  //       }
+  //     }
+
+  //     // Determine if media is a video
+  //     const isVideo =
+  //       (finalFileType && finalFileType.startsWith('video/')) ||
+  //       /\.(mp4|mov|quicktime|webm|m4v|3gp)$/i.test(finalFileUrl || fileName || '');
+
+  //     // Content fallback rules: "Video" vs "Photo"
+  //     let finalContent = typeof content === 'string' ? content.trim() : '';
+
+  //     const isUuidOrFilename =
+  //       finalContent === fileName ||
+  //       /^[0-9a-fA-F-]{36}\.[a-zA-Z0-9]+$/.test(finalContent) ||
+  //       /\.(mp4|mov|jpg|jpeg|png|webp|heic)$/i.test(finalContent);
+
+  //     if ((!finalContent || isUuidOrFilename) && finalFileUrl) {
+  //       finalContent = isVideo ? 'Video' : 'Photo';
+  //     }
+
+  //     const message = await Message.create({
+  //       roomId,
+  //       senderId,
+  //       content: finalContent || (isVideo ? 'Video' : 'Photo'),
+  //       fileUrl: finalFileUrl,
+  //       fileType: finalFileType,
+  //     });
+
+  //     if (room) {
+  //       await ChatRoom.findByIdAndUpdate(roomId, { lastMessage: message._id });
+  //     }
+
+  //     const populatedMessage = await message.populate('senderId', 'fullName profileimageurl');
+
+  //     // Realtime room emission
+  //     io.to(roomId).emit('new_message', populatedMessage);
+
+  //     if (room) {
+  //       const counterpartId =
+  //         room.homeOwnerId.toString() === senderId.toString()
+  //           ? room.plumberId.toString()
+  //           : room.homeOwnerId.toString();
+
+  //       io.to(`user_${counterpartId}`).emit('new_message', populatedMessage);
+  //       io.to(`user_${counterpartId}`).emit('chat_notification', {
+  //         roomId,
+  //         senderName: senderUser.fullName || 'Someone',
+  //         message: populatedMessage,
+  //       });
+
+  //       notificationService
+  //         .sendToUsers(
+  //           [counterpartId],
+  //           `New message from ${senderUser.fullName || 'Someone'}`,
+  //           finalContent || (isVideo ? 'Sent a video' : 'Sent a photo'),
+  //           { roomId: roomId.toString(), messageId: message._id.toString() },
+  //         )
+  //         .catch((err) => console.error('[Push Notification Error]:', err.message));
+  //     }
+  //   } catch (error) {
+  //     console.error('[send_message Error]:', error.message);
+  //     socket.emit('chat_error', { message: 'Failed to send message.' });
+  //   }
+  // });
+
   socket.on('send_message', async ({ roomId, senderId, receiverId, content, fileUrl, fileType, fileName }) => {
-    try {
-      if (!roomId || !senderId || (!content && !fileUrl)) {
-        socket.emit('chat_error', { message: 'Missing roomId, senderId, or content/file.' });
-        return;
-      }
+  try {
+    if (!roomId || !senderId || (!content && !fileUrl)) {
+      socket.emit('chat_error', { message: 'Missing roomId, senderId, or content/file.' });
+      return;
+    }
 
-      const senderUser = await User.findById(senderId);
-      if (!senderUser) {
-        socket.emit('chat_error', { message: 'Sender not found.' });
-        return;
-      }
+    const senderUser = await User.findById(senderId);
+    if (!senderUser) {
+      socket.emit('chat_error', { message: 'Sender not found.' });
+      return;
+    }
 
-      let room = await ChatRoom.findById(roomId);
-      if (!room && receiverId) {
-        const sRole = senderUser.role;
-        const homeOwnerId = sRole === 'licensed-plumber' ? receiverId : senderId;
-        const plumberId = sRole === 'licensed-plumber' ? senderId : receiverId;
+    let room = await ChatRoom.findById(roomId);
+    if (!room && receiverId) {
+      const sRole = senderUser.role;
+      const homeOwnerId = sRole === 'licensed-plumber' ? receiverId : senderId;
+      const plumberId = sRole === 'licensed-plumber' ? senderId : receiverId;
 
-        room = await ChatRoom.create({ _id: roomId, homeOwnerId, plumberId });
-        const sockets = await io.fetchSockets();
-        sockets.forEach((s) => s.join(roomId));
-      }
+      room = await ChatRoom.create({ _id: roomId, homeOwnerId, plumberId });
+      const sockets = await io.fetchSockets();
+      sockets.forEach((s) => s.join(roomId));
+    }
 
-      socket.join(roomId);
+    socket.join(roomId);
 
-      let finalFileUrl = null;
-      let finalFileType = fileType || null;
+    let finalFileUrl = null;
+    let finalFileType = fileType || null;
 
-      // Handle Base64 strings vs direct HTTP/S3 URLs
-      if (fileUrl) {
-        if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
-          finalFileUrl = fileUrl;
-        } else {
-          try {
-            console.log(`[Media Upload] Processing Base64 media for room: ${roomId}`);
-            const uploadResult = await uploadBase64ToS3(fileUrl, fileType);
-            finalFileUrl = uploadResult.fileUrl;
-            finalFileType = uploadResult.fileType;
-            console.log(`[Media Upload] S3 upload successful: ${finalFileUrl}`);
-          } catch (uploadErr) {
-            console.error('[Media Upload Error] S3 upload failed:', uploadErr.message);
-            socket.emit('chat_error', { message: 'Media upload failed.' });
-            return;
-          }
+    // 1. Process Base64 fileUrl or uploaded HTTP/S3 link
+    if (fileUrl) {
+      if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
+        finalFileUrl = fileUrl;
+      } else {
+        try {
+          const uploadResult = await uploadBase64ToS3(fileUrl, fileType);
+          finalFileUrl = uploadResult.fileUrl;
+          finalFileType = uploadResult.fileType;
+        } catch (uploadErr) {
+          console.error('[Media Upload Error] S3 upload failed:', uploadErr.message);
+          socket.emit('chat_error', { message: 'Media upload failed.' });
+          return;
         }
       }
+    }
 
-      // Infer fileType from URL extension if not supplied
-      if (!finalFileType && finalFileUrl) {
-        const cleanUrl = finalFileUrl.split('?')[0].toLowerCase();
-        if (/\.(mp4|mov|quicktime|webm|m4v|3gp)$/.test(cleanUrl)) {
-          finalFileType = 'video/mp4';
-        } else if (/\.(jpg|jpeg|png|gif|webp|heic|heif)$/.test(cleanUrl)) {
-          finalFileType = 'image/jpeg';
-        }
+    // 2. Infer MIME type if missing
+    if (!finalFileType && finalFileUrl) {
+      const cleanUrl = finalFileUrl.split('?')[0].toLowerCase();
+      if (/\.(mp4|mov|quicktime|webm|m4v|3gp)$/.test(cleanUrl)) {
+        finalFileType = 'video/mp4';
+      } else if (/\.(jpg|jpeg|png|gif|webp|heic|heif)$/.test(cleanUrl)) {
+        finalFileType = 'image/jpeg';
       }
+    }
 
-      // Determine if media is a video
-      const isVideo =
-        (finalFileType && finalFileType.startsWith('video/')) ||
-        /\.(mp4|mov|quicktime|webm|m4v|3gp)$/i.test(finalFileUrl || fileName || '');
+    const isVideo =
+      (finalFileType && finalFileType.startsWith('video/')) ||
+      /\.(mp4|mov|quicktime|webm|m4v|3gp)$/i.test(finalFileUrl || fileName || '');
 
-      // Content fallback rules: "Video" vs "Photo"
-      let finalContent = typeof content === 'string' ? content.trim() : '';
+    // 3. Strict content sanitization (Prevents raw Base64 string text dumps)
+    let finalContent = typeof content === 'string' ? content.trim() : '';
 
-      const isUuidOrFilename =
-        finalContent === fileName ||
-        /^[0-9a-fA-F-]{36}\.[a-zA-Z0-9]+$/.test(finalContent) ||
-        /\.(mp4|mov|jpg|jpeg|png|webp|heic)$/i.test(finalContent);
+    const isBase64String =
+      finalContent.startsWith('data:') ||
+      finalContent.length > 200 ||
+      /^[a-zA-Z0-9+/=]{100,}$/.test(finalContent.replace(/\s/g, '')) ||
+      finalContent === fileName ||
+      /\.(mp4|mov|jpg|jpeg|png|webp|heic)$/i.test(finalContent);
 
-      if ((!finalContent || isUuidOrFilename) && finalFileUrl) {
+    if (!finalContent || isBase64String) {
+      if (finalFileUrl) {
         finalContent = isVideo ? 'Video' : 'Photo';
+      } else {
+        finalContent = '';
       }
+    }
 
-      const message = await Message.create({
+    // 4. Create single message entry
+    const message = await Message.create({
+      roomId,
+      senderId,
+      content: finalContent || (isVideo ? 'Video' : 'Photo'),
+      fileUrl: finalFileUrl,
+      fileType: finalFileType,
+    });
+
+    if (room) {
+      await ChatRoom.findByIdAndUpdate(roomId, { lastMessage: message._id });
+    }
+
+    const populatedMessage = await message.populate('senderId', 'fullName profileimageurl');
+    io.to(roomId).emit('new_message', populatedMessage);
+
+    if (room) {
+      const counterpartId =
+        room.homeOwnerId.toString() === senderId.toString()
+          ? room.plumberId.toString()
+          : room.homeOwnerId.toString();
+
+      io.to(`user_${counterpartId}`).emit('new_message', populatedMessage);
+      io.to(`user_${counterpartId}`).emit('chat_notification', {
         roomId,
-        senderId,
-        content: finalContent || (isVideo ? 'Video' : 'Photo'),
-        fileUrl: finalFileUrl,
-        fileType: finalFileType,
+        senderName: senderUser.fullName || 'Someone',
+        message: populatedMessage,
       });
 
-      if (room) {
-        await ChatRoom.findByIdAndUpdate(roomId, { lastMessage: message._id });
-      }
-
-      const populatedMessage = await message.populate('senderId', 'fullName profileimageurl');
-
-      // Realtime room emission
-      io.to(roomId).emit('new_message', populatedMessage);
-
-      if (room) {
-        const counterpartId =
-          room.homeOwnerId.toString() === senderId.toString()
-            ? room.plumberId.toString()
-            : room.homeOwnerId.toString();
-
-        io.to(`user_${counterpartId}`).emit('new_message', populatedMessage);
-        io.to(`user_${counterpartId}`).emit('chat_notification', {
-          roomId,
-          senderName: senderUser.fullName || 'Someone',
-          message: populatedMessage,
-        });
-
-        notificationService
-          .sendToUsers(
-            [counterpartId],
-            `New message from ${senderUser.fullName || 'Someone'}`,
-            finalContent || (isVideo ? 'Sent a video' : 'Sent a photo'),
-            { roomId: roomId.toString(), messageId: message._id.toString() },
-          )
-          .catch((err) => console.error('[Push Notification Error]:', err.message));
-      }
-    } catch (error) {
-      console.error('[send_message Error]:', error.message);
-      socket.emit('chat_error', { message: 'Failed to send message.' });
+      notificationService
+        .sendToUsers(
+          [counterpartId],
+          `New message from ${senderUser.fullName || 'Someone'}`,
+          finalContent || (isVideo ? 'Sent a video' : 'Sent a photo'),
+          { roomId: roomId.toString(), messageId: message._id.toString() },
+        )
+        .catch((err) => console.error('[Push Notification Error]:', err.message));
     }
-  });
+  } catch (error) {
+    console.error('[send_message Error]:', error.message);
+    socket.emit('chat_error', { message: 'Failed to send message.' });
+  }
+});
 
   // ---------------------------------------------------------------------------
   // EVENT: ask_ai (AI Assistant)
