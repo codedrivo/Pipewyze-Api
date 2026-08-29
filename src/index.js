@@ -663,6 +663,7 @@ mongoose.connect(config.mongoose.url).then(() => {
 
         // Validate MIME type
         if (!ALLOWED_MIME_TYPES.includes(fileType)) {
+          console.error(`[Upload Error] Unsupported MIME type ${fileType} for uploadId ${uploadId}`);
           socket.emit('upload_error', {
             uploadId,
             error: 'Unsupported file type',
@@ -797,6 +798,7 @@ mongoose.connect(config.mongoose.url).then(() => {
             }
             activeUploads.delete(uploadId);
           }
+          console.error(`[Upload Error] Chunk upload failed for uploadId ${uploadId}: ${errorMsg}`);
           socket.emit('upload_error', { uploadId, error: errorMsg });
           if (callback) {
             callback({ status: 'error', error: errorMsg });
@@ -880,6 +882,7 @@ mongoose.connect(config.mongoose.url).then(() => {
                 }
 
                 if (!validateMagicBytes(upload.tempFilePath, upload.fileType)) {
+                  console.error(`[Upload Error] Magic bytes validation failed for uploadId ${uploadId}, expected type ${upload.fileType}`);
                   throw new Error('File integrity/magic signature mismatch');
                 }
 
