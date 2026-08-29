@@ -100,9 +100,14 @@ let io, server;
 mongoose.connect(config.mongoose.url).then(() => {
   logger.info('Connected to MongoDB');
 
-  server = http.createServer(app);
+  server = app.listen(config.port, () => {
+    logger.info(`Listening on port ${config.port}, Mode: ${config.env}`);
+  });
 
-  io = socketIo(server, {
+  const socketApp = http.createServer(app);
+  const socketPort = config.socketPort || 4000;
+
+  io = socketIo(socketApp, {
     cors: { origin: '*', methods: ['GET', 'POST'] },
     maxHttpBufferSize: 100 * 1024 * 1024, // 100MB max message size for large gallery files/chunks
   });
@@ -1612,8 +1617,8 @@ For general conversation or greetings, you MUST set "youtubeUrl" to null.
     );
   });
 
-  server.listen(config.port, () => {
-    logger.info(`Server running on port ${config.port}, Mode: ${config.env}`);
+  socketApp.listen(socketPort, () => {
+    logger.info(`Socket.IO server running on port ${socketPort}`);
   });
 
   const startCountdown = (groupId, team, seconds) => {
