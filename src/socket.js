@@ -24,6 +24,7 @@ if (!fs.existsSync(tempDir)) {
 const activeUploads = new Map();
 
 const MAX_UPLOAD_SIZE = 500 * 1024 * 1024; // 500 MB
+const MAX_CHUNK_SIZE = 2 * 1024 * 1024; // 2 MB per chunk - safe for Socket.IO buffer (100 MB)
 const ALLOWED_MIME_TYPES = [
   'image/jpeg',
   'image/jpg',
@@ -34,6 +35,7 @@ const ALLOWED_MIME_TYPES = [
   'image/gif',
   'video/mp4',
   'video/quicktime',
+  'video/mov',
   'video/webm',
   'application/octet-stream',
 ];
@@ -41,41 +43,121 @@ const ALLOWED_MIME_TYPES = [
 function validateMagicBytes(filePath, fileType) {
   try {
     const fd = fs.openSync(filePath, 'r');
-    const buffer = Buffer.alloc(32);
-    fs.readSync(fd, buffer, 0, 32, 0);
+    const buffer = Buffer.alloc(64); // Read 64 bytes for comprehensive checking
+    fs.readSync(fd, buffer, 0, 64, 0);
     fs.closeSync(fd);
 
     const hex = buffer.toString('hex').toUpperCase();
 
+    // JPEG: FFD8FF...
     const isJpeg = hex.startsWith('FFD8FF');
     const isPng = hex.startsWith('89504E470D0A1A0A');
     const isGif = hex.startsWith('47494638');
-    const isWebp = hex.startsWith('52494646') && hex.slice(16, 24) === '57454250';
-    const isHeic = hex.slice(8, 16) === '66747970'; // Checks for 'ftyp'
-    const isMp4 = hex.slice(8, 16) === '66747970';
+
+    // WebP: RIFF....WEBP (bytes 0-3: RIFF, bytes 8-11: WEBP)
+    const isWebp =
+      hex.startsWith('52494646') &&
+      buffer.slice(8, 12).toString('ascii') === 'WEBP';
+
+    // WebM: 1A45DFA3
     const isWebm = hex.startsWith('1A45DFA3');
 
-    // If it's a known image type, verify it's a valid image
-    if (fileType.startsWith('image/')) {
-      return isJpeg || isPng || isGif || isWebp || isHeic;
+    // ISO Base Media File Format (MP4, MOV, HEIC, HEIF)
+    // Structure: 4 bytes size, then 'ftyp' tag, then 4-byte brand identifier
+    const isISOBMFF = buffer.slice(4, 8).toString('ascii') === 'ftyp';
+    let ftypBrand = '';
+    if (isISOBMFF) {
+      ftypBrand = buffer.slice(8, 12).toString('ascii').trim();
     }
 
-    // If it's a known video type, verify it's a valid video
-    if (fileType.startsWith('video/')) {
-      return isMp4 || isWebm || hex.slice(8, 16) === '6D6F6F76';
-    }
+    // MP4: ftyp brand is one of: isom, iso2, avc1, mp41, mp42, mp43, mmp4
+    const isMp4 =
+      isISOBMFF &&
+      ['isom', 'iso2', 'avc1', 'mp41', 'mp42', 'mp43', 'mmp4'].includes(
+        ftypBrand,
+      );
 
-    // If it's application/octet-stream, verify it's one of our supported formats
-    if (fileType === 'application/octet-stream') {
-      return isJpeg || isPng || isGif || isWebp || isHeic || isMp4 || isWebm;
-    }
+    // MOV/QuickTime: ftyp brand is 'qt  ' (qt followed by two spaces)
+    const isMov =
+      isISOBMFF &&
+      (ftypBrand === 'qt  ' ||
+        buffer.slice(8, 12).toString('ascii') === 'qt  ');
 
-    // For any other file types, allow it
-    return true;
+    // HEIC/HEIF: ftyp brand is one of: mif1, heic, heix, hevc, hevx, fvt1
+    const isHeic =
+      isISOBMFF &&
+      ['mif1', 'heic', 'heix', 'hevc', 'hevx', 'fvt1'].includes(ftypBrand);
+
+    console.log(
+      `[Magic Byte Validation] filePath=${filePath}, fileType=${fileType}, isJpeg=${isJpeg}, isPng=${isPng}, isGif=${isGif}, isWebp=${isWebp}, isWebm=${isWebm}, isMp4=${isMp4}, isMov=${isMov}, isHeic=${isHeic}`,
+    );
+
+    // Validate based on declared file type
+    switch (fileType) {
+      case 'image/jpeg':
+      case 'image/jpg':
+        return isJpeg;
+      case 'image/png':
+        return isPng;
+      case 'image/gif':
+        return isGif;
+      case 'image/webp':
+        return isWebp;
+      case 'image/heic':
+      case 'image/heif':
+        return isHeic;
+      case 'video/mp4':
+        return isMp4;
+      case 'video/quicktime':
+      case 'video/mov':
+        return isMov;
+      case 'video/webm':
+        return isWebm;
+      case 'application/octet-stream':
+        // For octet-stream, accept if it matches any supported format
+        return (
+          isJpeg ||
+          isPng ||
+          isGif ||
+          isWebp ||
+          isHeic ||
+          isMp4 ||
+          isMov ||
+          isWebm
+        );
+      default:
+        console.warn(`[Magic Byte Validation] Unknown fileType: ${fileType}`);
+        return false;
+    }
   } catch (err) {
-    console.error('Magic bytes validation error:', err);
+    console.error('[Magic Byte Validation] Error reading file:', err);
     return false;
   }
+}
+
+/**
+ * Infer MIME type from filename extension.
+ * Used as fallback when mobile client sends empty or generic MIME type.
+ */
+function inferMimeTypeFromFilename(fileName) {
+  if (!fileName) return null;
+  const ext = fileName.toLowerCase().split('.').pop();
+  const mimeMap = {
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    gif: 'image/gif',
+    webp: 'image/webp',
+    heic: 'image/heic',
+    heif: 'image/heif',
+    mp4: 'video/mp4',
+    mov: 'video/quicktime',
+    qt: 'video/quicktime',
+    webm: 'video/webm',
+    m4v: 'video/mp4',
+    '3gp': 'video/mp4',
+  };
+  return mimeMap[ext] || null;
 }
 
 const s3 = new S3Client({
@@ -102,15 +184,14 @@ app.use(bodyParser.urlencoded({ extended: false }));
 io.on('connection', async (socket) => {
   // Automatically join the socket to user's chat rooms on connection asynchronously
   let userId = socket.handshake.query?.userId;
-  let token = socket.handshake.auth?.token || 
-              socket.handshake.headers?.authorization || 
-              socket.handshake.query?.token;
+  let token =
+    socket.handshake.auth?.token ||
+    socket.handshake.headers?.authorization ||
+    socket.handshake.query?.token;
 
   if (token) {
     try {
-      const access = token.startsWith('Bearer ')
-        ? token.split(' ')[1]
-        : token;
+      const access = token.startsWith('Bearer ') ? token.split(' ')[1] : token;
       const jwt = require('jsonwebtoken');
       const config = require('./config/config');
       const data = jwt.verify(access, config.jwt.secret, {
@@ -135,7 +216,9 @@ io.on('connection', async (socket) => {
       .then((updatedUser) => {
         const name = updatedUser ? updatedUser.fullName : userId;
         const role = updatedUser ? updatedUser.role : 'unknown';
-        console.log(`[User Connection] User ${name} (${role}) connected & marked online: ${userId}`);
+        console.log(
+          `[User Connection] User ${name} (${role}) connected & marked online: ${userId}`,
+        );
       })
       .catch((err) => console.error(err));
     // Broadcast status changed to everyone
@@ -160,7 +243,11 @@ io.on('connection', async (socket) => {
     socket.userId = connectedUserId;
     socket.join(`user_${connectedUserId}`);
     try {
-      const updatedUser = await User.findByIdAndUpdate(connectedUserId, { isOnline: true }, { new: true });
+      const updatedUser = await User.findByIdAndUpdate(
+        connectedUserId,
+        { isOnline: true },
+        { new: true },
+      );
       const name = updatedUser ? updatedUser.fullName : connectedUserId;
       const role = updatedUser ? updatedUser.role : 'unknown';
       console.log(
@@ -191,7 +278,13 @@ io.on('connection', async (socket) => {
     if (activeUserId) {
       try {
         const checkUser = await User.findById(activeUserId);
-        const allowedRoles = ['home-owner', 'licensed-plumber', 'apprentice', 'admin', 'support'];
+        const allowedRoles = [
+          'home-owner',
+          'licensed-plumber',
+          'apprentice',
+          'admin',
+          'support',
+        ];
         if (!checkUser || !allowedRoles.includes(checkUser.role)) {
           const errorMsg = `Access denied: User with role ${
             checkUser ? checkUser.role : 'unknown'
@@ -204,7 +297,9 @@ io.on('connection', async (socket) => {
         socket.join(`user_${activeUserId}`);
       } catch (err) {
         console.error('Error verifying user role in join_room:', err);
-        socket.emit('chat_error', { message: 'Internal server error verifying authorization.' });
+        socket.emit('chat_error', {
+          message: 'Internal server error verifying authorization.',
+        });
         return;
       }
     }
@@ -280,7 +375,13 @@ io.on('connection', async (socket) => {
           return;
         }
 
-        const allowedRoles = ['home-owner', 'licensed-plumber', 'apprentice', 'admin', 'support'];
+        const allowedRoles = [
+          'home-owner',
+          'licensed-plumber',
+          'apprentice',
+          'admin',
+          'support',
+        ];
         if (!allowedRoles.includes(senderUser.role)) {
           const errorMsg = `Validation Failed: Sender role ${senderUser.role} is not authorized for chat.`;
           console.error(errorMsg);
@@ -334,7 +435,8 @@ io.on('connection', async (socket) => {
           const homeOwnerUser = await User.findById(room.homeOwnerId);
           const plumberUser = await User.findById(room.plumberId);
           if (!homeOwnerUser || !plumberUser) {
-            const errorMsg = 'Validation Failed: Chat room participants not found.';
+            const errorMsg =
+              'Validation Failed: Chat room participants not found.';
             console.error(errorMsg);
             socket.emit('chat_error', { message: errorMsg });
             return;
@@ -342,7 +444,9 @@ io.on('connection', async (socket) => {
         }
 
         // Validate that the sender is either a participant in the room or a staff/admin user
-        const isStaff = ['admin', 'support', 'apprentice'].includes(senderUser.role);
+        const isStaff = ['admin', 'support', 'apprentice'].includes(
+          senderUser.role,
+        );
         if (
           !isStaff &&
           room.homeOwnerId.toString() !== senderId &&
@@ -378,7 +482,10 @@ io.on('connection', async (socket) => {
             !fileUrl.startsWith('https://')
           ) {
             const cleanBase64 = fileUrl.replace(/\s/g, '');
-            if (/^[a-zA-Z0-9+/=]+$/.test(cleanBase64) && cleanBase64.length > 50) {
+            if (
+              /^[a-zA-Z0-9+/=]+$/.test(cleanBase64) &&
+              cleanBase64.length > 50
+            ) {
               try {
                 buffer = Buffer.from(cleanBase64, 'base64');
                 isBase64 = true;
@@ -390,7 +497,10 @@ io.on('connection', async (socket) => {
                   mimeType = 'image/png';
                 } else if (hex.startsWith('47494638')) {
                   mimeType = 'image/gif';
-                } else if (hex.startsWith('52494646') && buffer.slice(8, 12).toString('ascii') === 'WEBP') {
+                } else if (
+                  hex.startsWith('52494646') &&
+                  buffer.slice(8, 12).toString('ascii') === 'WEBP'
+                ) {
                   mimeType = 'image/webp';
                 } else if (buffer.slice(4, 8).toString('ascii') === 'ftyp') {
                   mimeType = 'video/mp4';
@@ -408,7 +518,9 @@ io.on('connection', async (socket) => {
           if (isBase64 && buffer) {
             try {
               const extension = mimeType.split('/').pop() || 'bin';
-              const s3Folder = mimeType.startsWith('image/') ? 'images' : 'videos';
+              const s3Folder = mimeType.startsWith('image/')
+                ? 'images'
+                : 'videos';
               const uniqueKey = `PipeWyze/${s3Folder}/${crypto.randomUUID()}.${extension}`;
 
               const command = new PutObjectCommand({
@@ -428,19 +540,35 @@ io.on('connection', async (socket) => {
               }
               finalFileType = mimeType;
             } catch (s3Err) {
-              console.error('[S3 Upload Error] Failed to upload base64 file to S3:', s3Err.message);
+              console.error(
+                '[S3 Upload Error] Failed to upload base64 file to S3:',
+                s3Err.message,
+              );
               finalFileUrl = undefined;
             }
           }
         }
 
-        if (!finalFileType && finalFileUrl && !finalFileUrl.startsWith('data:') && (finalFileUrl.startsWith('http://') || finalFileUrl.startsWith('https://') || finalFileUrl.startsWith('/'))) {
+        if (
+          !finalFileType &&
+          finalFileUrl &&
+          !finalFileUrl.startsWith('data:') &&
+          (finalFileUrl.startsWith('http://') ||
+            finalFileUrl.startsWith('https://') ||
+            finalFileUrl.startsWith('/'))
+        ) {
           const cleanUrl = finalFileUrl.split('?')[0];
-          const ext = cleanUrl.substring(cleanUrl.lastIndexOf('.') + 1).toLowerCase();
+          const ext = cleanUrl
+            .substring(cleanUrl.lastIndexOf('.') + 1)
+            .toLowerCase();
           if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'heic'].includes(ext)) {
             finalFileType = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
-          } else if (['mp4', 'mov', 'quicktime', 'webm', 'm4v', '3gp'].includes(ext)) {
-            finalFileType = `video/${ext === 'mov' || ext === 'quicktime' ? 'quicktime' : ext}`;
+          } else if (
+            ['mp4', 'mov', 'quicktime', 'webm', 'm4v', '3gp'].includes(ext)
+          ) {
+            finalFileType = `video/${
+              ext === 'mov' || ext === 'quicktime' ? 'quicktime' : ext
+            }`;
           }
         }
 
@@ -460,10 +588,21 @@ io.on('connection', async (socket) => {
         }
 
         // Safeguard: Ensure finalContent and finalFileUrl do not contain raw base64 data dumps
-        if (finalContent && finalContent.length > 100 && !finalContent.includes(' ') && /^[a-zA-Z0-9+/=]+$/.test(finalContent.replace(/\s/g, ''))) {
+        if (
+          finalContent &&
+          finalContent.length > 100 &&
+          !finalContent.includes(' ') &&
+          /^[a-zA-Z0-9+/=]+$/.test(finalContent.replace(/\s/g, ''))
+        ) {
           finalContent = fileName || 'Attachment';
         }
-        if (finalFileUrl && finalFileUrl.length > 100 && !finalFileUrl.includes(' ') && !finalFileUrl.startsWith('http') && /^[a-zA-Z0-9+/=]+$/.test(finalFileUrl.replace(/\s/g, ''))) {
+        if (
+          finalFileUrl &&
+          finalFileUrl.length > 100 &&
+          !finalFileUrl.includes(' ') &&
+          !finalFileUrl.startsWith('http') &&
+          /^[a-zA-Z0-9+/=]+$/.test(finalFileUrl.replace(/\s/g, ''))
+        ) {
           finalFileUrl = undefined;
         }
 
@@ -475,7 +614,11 @@ io.on('connection', async (socket) => {
           fileUrl: finalFileUrl,
           fileType: finalFileType,
         });
-        console.log(`[Chat Message] Chat message sent successfully in room ${roomId} from sender ${senderId}. Content: "${finalContent}", fileUrl: "${finalFileUrl || 'none'}"`);
+        console.log(
+          `[Chat Message] Chat message sent successfully in room ${roomId} from sender ${senderId}. Content: "${finalContent}", fileUrl: "${
+            finalFileUrl || 'none'
+          }"`,
+        );
 
         // Update the last message in the room
         await ChatRoom.findByIdAndUpdate(roomId, {
@@ -498,7 +641,10 @@ io.on('connection', async (socket) => {
             : room.homeOwnerId;
 
         // Also emit new_message to counterpart's user room in case they are not in the active chat room socket
-        io.to(`user_${counterpartId.toString()}`).emit('new_message', populatedMessage);
+        io.to(`user_${counterpartId.toString()}`).emit(
+          'new_message',
+          populatedMessage,
+        );
 
         const senderName = senderUser ? senderUser.fullName : 'Someone';
 
@@ -540,26 +686,19 @@ io.on('connection', async (socket) => {
       fileSize,
       totalChunks,
     }) => {
-      console.log('--- Socket Event: start_upload ---');
-      console.log('Metadata:', {
-        uploadId,
-        roomId,
-        senderId,
-        fileName,
-        fileType,
-        fileSize,
-        totalChunks,
-      });
+      console.log(
+        `[Media Upload] start_upload event - uploadId=${uploadId}, fileName=${fileName}, fileType=${fileType}, fileSize=${fileSize}, totalChunks=${totalChunks}`,
+      );
 
-      if (
-        !uploadId ||
-        !roomId ||
-        !senderId ||
-        !fileName ||
-        !fileType ||
-        !totalChunks
-      ) {
-        socket.emit('upload_error', { uploadId, error: 'Missing metadata' });
+      if (!uploadId || !roomId || !senderId || !fileName || !totalChunks) {
+        console.error(
+          `[Media Upload Error] start_upload: Missing required metadata for uploadId=${uploadId}`,
+        );
+        socket.emit('upload_error', {
+          uploadId,
+          error:
+            'Missing required metadata (uploadId, roomId, senderId, fileName, totalChunks)',
+        });
         return;
       }
 
@@ -570,7 +709,13 @@ io.on('connection', async (socket) => {
         fileName.includes('\\') ||
         fileName.includes('..')
       ) {
-        socket.emit('upload_error', { uploadId, error: 'Invalid file name' });
+        console.error(
+          `[Media Upload Error] start_upload: Invalid file name for uploadId=${uploadId}: ${fileName}`,
+        );
+        socket.emit('upload_error', {
+          uploadId,
+          error: 'Invalid file name (contains path separators or ..)',
+        });
         return;
       }
 
@@ -579,7 +724,15 @@ io.on('connection', async (socket) => {
       if (fileSize !== undefined && fileSize !== null) {
         size = parseInt(fileSize, 10);
         if (isNaN(size) || size <= 0 || size > MAX_UPLOAD_SIZE) {
-          socket.emit('upload_error', { uploadId, error: 'Invalid file size' });
+          console.error(
+            `[Media Upload Error] start_upload: Invalid file size for uploadId=${uploadId}: ${size} (max: ${MAX_UPLOAD_SIZE})`,
+          );
+          socket.emit('upload_error', {
+            uploadId,
+            error: `Invalid file size. Max: ${Math.floor(
+              MAX_UPLOAD_SIZE / 1024 / 1024,
+            )}MB`,
+          });
           return;
         }
       }
@@ -587,27 +740,60 @@ io.on('connection', async (socket) => {
       // Validate totalChunks
       const chunks = parseInt(totalChunks, 10);
       if (isNaN(chunks) || chunks <= 0 || chunks > 10000) {
+        console.error(
+          `[Media Upload Error] start_upload: Invalid total chunks for uploadId=${uploadId}: ${chunks}`,
+        );
         socket.emit('upload_error', {
           uploadId,
-          error: 'Invalid total chunks count',
+          error: 'Invalid total chunks count (must be > 0 and <= 10000)',
         });
         return;
       }
 
+      // Infer MIME type from filename if not provided or generic
+      let finalFileType = fileType;
+      if (!fileType || fileType === 'application/octet-stream') {
+        const inferredType = inferMimeTypeFromFilename(fileName);
+        if (inferredType) {
+          console.log(
+            `[Media Upload] Inferred MIME type from filename: ${fileName} -> ${inferredType}`,
+          );
+          finalFileType = inferredType;
+        }
+      }
+
       // Validate MIME type
-      if (!ALLOWED_MIME_TYPES.includes(fileType)) {
-        console.error(`[Upload Error] Unsupported MIME type ${fileType} for uploadId ${uploadId}`);
+      if (!ALLOWED_MIME_TYPES.includes(finalFileType)) {
+        console.error(
+          `[Media Upload Error] start_upload: Unsupported MIME type=${finalFileType} for uploadId=${uploadId}`,
+        );
         socket.emit('upload_error', {
           uploadId,
-          error: 'Unsupported file type',
+          error: `Unsupported file type: ${finalFileType}. Supported: JPEG, PNG, GIF, WebP, HEIC, MP4, MOV, WebM`,
         });
         return;
       }
 
       try {
-        // Authorization: Verify room and sender
+        // Authorization: Verify socket user matches senderId
+        const socketUserId = socket.userId || socket.handshake.query?.userId;
+        if (socketUserId && socketUserId.toString() !== senderId.toString()) {
+          console.error(
+            `[Media Upload Error] start_upload: Socket user ${socketUserId} does not match sender ${senderId}`,
+          );
+          socket.emit('upload_error', {
+            uploadId,
+            error: 'Unauthorized: Socket user does not match sender',
+          });
+          return;
+        }
+
+        // Verify room exists and sender is a participant
         const room = await ChatRoom.findById(roomId);
         if (!room) {
+          console.error(
+            `[Media Upload Error] start_upload: Chat room not found for roomId=${roomId}`,
+          );
           socket.emit('upload_error', {
             uploadId,
             error: 'Chat room not found',
@@ -616,28 +802,51 @@ io.on('connection', async (socket) => {
         }
 
         const senderUser = await User.findById(senderId);
-        const isStaff = senderUser && ['admin', 'support', 'apprentice'].includes(senderUser.role);
-        if (
-          !isStaff &&
-          room.homeOwnerId.toString() !== senderId &&
-          room.plumberId.toString() !== senderId
-        ) {
+        if (!senderUser) {
+          console.error(
+            `[Media Upload Error] start_upload: Sender not found for senderId=${senderId}`,
+          );
           socket.emit('upload_error', {
             uploadId,
-            error: 'Access denied: You are not authorized in this room',
+            error: 'Sender user not found',
           });
           return;
         }
 
-        // Clean up previous active upload if the client retries
+        const isStaff = ['admin', 'support', 'apprentice'].includes(
+          senderUser.role,
+        );
+        if (
+          !isStaff &&
+          room.homeOwnerId.toString() !== senderId.toString() &&
+          room.plumberId.toString() !== senderId.toString()
+        ) {
+          console.error(
+            `[Media Upload Error] start_upload: Sender ${senderId} is not authorized in room ${roomId}`,
+          );
+          socket.emit('upload_error', {
+            uploadId,
+            error: 'Access denied: You are not a participant in this room',
+          });
+          return;
+        }
+
+        // Clean up previous active upload if the client retries (allows resuming on reconnect)
         const existing = activeUploads.get(uploadId);
         if (existing) {
+          console.log(
+            `[Media Upload] Cleaning up previous upload session for uploadId=${uploadId}`,
+          );
           if (existing.timeoutId) clearTimeout(existing.timeoutId);
           existing.writeStream.end();
           if (fs.existsSync(existing.tempFilePath)) {
             try {
               fs.unlinkSync(existing.tempFilePath);
-            } catch (e) {}
+            } catch (e) {
+              console.warn(
+                `[Media Upload] Failed to delete existing temp file: ${existing.tempFilePath}`,
+              );
+            }
           }
           activeUploads.delete(uploadId);
         }
@@ -645,21 +854,26 @@ io.on('connection', async (socket) => {
         const tempFilePath = path.join(tempDir, `${uploadId}.upload`);
         const writeStream = fs.createWriteStream(tempFilePath);
 
-        // Timeout (15 minutes)
+        // Timeout (15 minutes for mobile network stability)
         const timeoutId = setTimeout(
           () => {
             const up = activeUploads.get(uploadId);
             if (up) {
+              console.log(
+                `[Media Upload] Upload timeout for uploadId=${uploadId}`,
+              );
               up.writeStream.end();
               if (fs.existsSync(up.tempFilePath)) {
                 try {
                   fs.unlinkSync(up.tempFilePath);
-                } catch (e) {}
+                } catch (e) {
+                  // Cleanup failure is not critical
+                }
               }
               activeUploads.delete(uploadId);
               socket.emit('upload_error', {
                 uploadId,
-                error: 'Upload timed out',
+                error: 'Upload timed out after 15 minutes of inactivity',
               });
             }
           },
@@ -672,7 +886,7 @@ io.on('connection', async (socket) => {
           roomId,
           senderId,
           fileName,
-          fileType,
+          fileType: finalFileType, // Use inferred type
           fileSize: size,
           totalChunks: chunks,
           expectedChunkIndex: 0,
@@ -683,7 +897,9 @@ io.on('connection', async (socket) => {
           chunksWritten: new Set(),
         });
 
-        console.log(`Temp file stream created at: ${tempFilePath}`);
+        console.log(
+          `[Media Upload] Upload session ready: uploadId=${uploadId}, roomId=${roomId}, senderId=${senderId}, fileName=${fileName}, fileType=${finalFileType}, fileSize=${size}, totalChunks=${chunks}, tempPath=${tempFilePath}`,
+        );
         socket.emit('upload_ready', { uploadId });
       } catch (err) {
         console.error('Error starting upload:', err);
@@ -715,6 +931,9 @@ io.on('connection', async (socket) => {
             upload.receivedChunks * (upload.fileSize / upload.totalChunks);
           progressPayload.totalBytes = upload.fileSize;
         }
+        console.log(
+          `[Media Upload] Chunk ACK: uploadId=${uploadId}, chunkIndex=${chunkIndex}, progress=${progress}%`,
+        );
         socket.emit('upload_progress', progressPayload);
 
         if (callback) {
@@ -730,11 +949,15 @@ io.on('connection', async (socket) => {
           if (fs.existsSync(upload.tempFilePath)) {
             try {
               fs.unlinkSync(upload.tempFilePath);
-            } catch (e) {}
+            } catch (e) {
+              // Cleanup failure is not critical
+            }
           }
           activeUploads.delete(uploadId);
         }
-        console.error(`[Upload Error] Chunk upload failed for uploadId ${uploadId}: ${errorMsg}`);
+        console.error(
+          `[Media Upload] Chunk upload failed: uploadId=${uploadId}, error=${errorMsg}`,
+        );
         socket.emit('upload_error', { uploadId, error: errorMsg });
         if (callback) {
           callback({ status: 'error', error: errorMsg });
@@ -742,53 +965,97 @@ io.on('connection', async (socket) => {
       };
 
       if (!upload) {
+        console.error(
+          `[Media Upload] Upload session not found: uploadId=${uploadId}`,
+        );
         handleFail('Upload session not found');
         return;
       }
 
       if (upload.socketId !== socket.id) {
-        handleFail('Unauthorized socket upload');
+        console.error(
+          `[Media Upload] Unauthorized socket: uploadId=${uploadId}, expectedSocket=${upload.socketId}, receivedSocket=${socket.id}`,
+        );
+        handleFail('Unauthorized: Chunk from different socket');
         return;
       }
 
       const idx = parseInt(chunkIndex, 10);
       if (isNaN(idx) || idx < 0 || idx >= upload.totalChunks) {
-        handleFail('Invalid chunk index');
+        console.error(
+          `[Media Upload] Invalid chunk index: uploadId=${uploadId}, chunkIndex=${idx}, totalChunks=${upload.totalChunks}`,
+        );
+        handleFail(
+          `Invalid chunk index: ${idx} (valid: 0-${upload.totalChunks - 1})`,
+        );
         return;
       }
 
       if (upload.chunksWritten.has(idx)) {
         console.warn(
-          `Duplicate chunk index received: ${idx} for upload ${uploadId}. Skipping.`,
+          `[Media Upload] Duplicate chunk received: uploadId=${uploadId}, chunkIndex=${idx}. Skipping duplicate.`,
         );
         sendAck();
         return;
       }
 
       if (idx !== upload.expectedChunkIndex) {
+        console.error(
+          `[Media Upload] Out of order chunk: uploadId=${uploadId}, expected=${upload.expectedChunkIndex}, received=${idx}`,
+        );
         handleFail(
-          `Out of order chunk received. Expected: ${upload.expectedChunkIndex}, got: ${idx}`,
+          `Out of order chunk. Expected: ${upload.expectedChunkIndex}, got: ${idx}. Chunks must be sent sequentially.`,
         );
         return;
       }
 
       try {
+        // Convert chunkData to Buffer - handle multiple formats from mobile clients
         let buffer;
+        let chunkSize = 0;
+
         if (Buffer.isBuffer(chunkData)) {
           buffer = chunkData;
+        } else if (chunkData instanceof ArrayBuffer) {
+          // Handle ArrayBuffer (Uint8Array) from mobile clients
+          buffer = Buffer.from(chunkData);
         } else if (typeof chunkData === 'string') {
+          // Handle base64 string
           const base64Content = chunkData.includes(';base64,')
             ? chunkData.split(';base64,')[1]
             : chunkData;
           buffer = Buffer.from(base64Content, 'base64');
         } else {
+          // Fallback: try to convert to Buffer
           buffer = Buffer.from(chunkData);
         }
 
+        chunkSize = buffer.length;
+
+        // Validate chunk size - prevent oversized chunks that exceed Socket.IO buffer
+        if (chunkSize <= 0 || chunkSize > MAX_CHUNK_SIZE) {
+          console.error(
+            `[Media Upload] Invalid chunk size: uploadId=${uploadId}, chunkIndex=${idx}, size=${chunkSize}B (max: ${MAX_CHUNK_SIZE}B)`,
+          );
+          handleFail(
+            `Chunk size invalid: ${chunkSize}B (max: ${Math.floor(
+              MAX_CHUNK_SIZE / 1024,
+            )}KB)`,
+          );
+          return;
+        }
+
         if (upload.writeStream.writableEnded || upload.writeStream.destroyed) {
+          console.error(
+            `[Media Upload] Write stream is closed: uploadId=${uploadId}`,
+          );
           handleFail('Write stream is closed');
           return;
         }
+
+        console.log(
+          `[Media Upload] Writing chunk: uploadId=${uploadId}, chunkIndex=${idx}, chunkSize=${chunkSize}B, totalChunks=${upload.totalChunks}`,
+        );
 
         const writeSuccessful = upload.writeStream.write(buffer);
         upload.chunksWritten.add(idx);
@@ -798,26 +1065,68 @@ io.on('connection', async (socket) => {
         const isLastChunk = upload.receivedChunks === upload.totalChunks;
 
         const processCompleteUpload = () => {
+          console.log(
+            `[Media Upload] Final chunk received, closing stream: uploadId=${uploadId}`,
+          );
           upload.writeStream.end();
 
           upload.writeStream.on('finish', async () => {
             try {
               if (upload.timeoutId) clearTimeout(upload.timeoutId);
 
+              console.log(
+                `[Media Upload] Stream finished, validating file: uploadId=${uploadId}`,
+              );
+
               const stats = fs.statSync(upload.tempFilePath);
-              if (
-                stats.size === 0 ||
-                (upload.fileSize && stats.size > upload.fileSize)
-              ) {
+              const finalFileSize = stats.size;
+
+              // Validate final file size
+              if (finalFileSize === 0) {
+                console.error(
+                  `[Media Upload] File is empty: uploadId=${uploadId}, path=${upload.tempFilePath}`,
+                );
+                throw new Error('Final file size is zero (empty file)');
+              }
+
+              if (upload.fileSize && finalFileSize !== upload.fileSize) {
+                console.warn(
+                  `[Media Upload] File size mismatch: uploadId=${uploadId}, expected=${upload.fileSize}B, actual=${finalFileSize}B`,
+                );
+                // Allow small variance for streaming uploads but reject if significantly different
+                if (Math.abs(finalFileSize - upload.fileSize) > 1024) {
+                  throw new Error(
+                    `File size mismatch: expected ${upload.fileSize}B, got ${finalFileSize}B`,
+                  );
+                }
+              }
+
+              if (finalFileSize > MAX_UPLOAD_SIZE) {
+                console.error(
+                  `[Media Upload] File exceeds max size: uploadId=${uploadId}, size=${finalFileSize}B (max: ${MAX_UPLOAD_SIZE}B)`,
+                );
                 throw new Error(
-                  'Actual file size does not match metadata / is zero',
+                  `File exceeds maximum size of ${Math.floor(
+                    MAX_UPLOAD_SIZE / 1024 / 1024,
+                  )}MB`,
                 );
               }
 
+              console.log(
+                `[Media Upload] Validating magic bytes: uploadId=${uploadId}, fileType=${upload.fileType}`,
+              );
               if (!validateMagicBytes(upload.tempFilePath, upload.fileType)) {
-                console.error(`[Upload Error] Magic bytes validation failed for uploadId ${uploadId}, expected type ${upload.fileType}`);
-                throw new Error('File integrity/magic signature mismatch');
+                console.error(
+                  `[Media Upload] Magic bytes validation failed: uploadId=${uploadId}, fileType=${upload.fileType}, path=${upload.tempFilePath}`,
+                );
+                throw new Error(
+                  `File magic bytes do not match declared type: ${upload.fileType}`,
+                );
               }
+
+              console.log(
+                `[Media Upload] Starting S3 upload: uploadId=${uploadId}, fileSize=${finalFileSize}B`,
+              );
 
               const fileStream = fs.createReadStream(upload.tempFilePath);
               const extension = upload.fileName.split('.').pop() || 'bin';
@@ -831,12 +1140,12 @@ io.on('connection', async (socket) => {
                 Key: uniqueS3Key,
                 Body: fileStream,
                 ContentType: upload.fileType,
-                ContentLength: stats.size,
+                ContentLength: finalFileSize,
               });
 
               await s3.send(command);
               console.log(
-                `Successfully uploaded file to S3. Key: ${uniqueS3Key}`,
+                `[Media Upload] S3 upload successful: uploadId=${uploadId}, key=${uniqueS3Key}, size=${finalFileSize}B`,
               );
 
               let fileUrl;
@@ -847,12 +1156,28 @@ io.on('connection', async (socket) => {
                 fileUrl = `https://${config.s3.S3_BUCKET_PATH}.s3.${config.s3.region}.amazonaws.com/${uniqueS3Key}`;
               }
 
-              console.log(`Generated file URL: ${fileUrl}`);
+              console.log(
+                `[Media Upload] Generated URL: uploadId=${uploadId}, url=${fileUrl}`,
+              );
 
-              fs.unlinkSync(upload.tempFilePath);
+              // Delete temp file AFTER successful S3 upload
+              try {
+                fs.unlinkSync(upload.tempFilePath);
+                console.log(
+                  `[Media Upload] Deleted temp file: uploadId=${uploadId}`,
+                );
+              } catch (unlinkErr) {
+                console.warn(
+                  `[Media Upload] Failed to delete temp file: uploadId=${uploadId}, path=${upload.tempFilePath}, error=${unlinkErr.message}`,
+                );
+              }
+
               activeUploads.delete(uploadId);
-              console.log(`Removed local temp file: ${upload.tempFilePath}`);
 
+              // Create exactly ONE MongoDB message for this upload
+              console.log(
+                `[Media Upload] Creating MongoDB message: uploadId=${uploadId}, roomId=${upload.roomId}, senderId=${upload.senderId}`,
+              );
               const message = await Message.create({
                 roomId: upload.roomId,
                 senderId: upload.senderId,
@@ -860,23 +1185,40 @@ io.on('connection', async (socket) => {
                 fileUrl,
                 fileType: upload.fileType,
               });
-              console.log(`[Media Upload] File uploaded successfully to S3 and message created: room=${upload.roomId}, fileUrl=${fileUrl}, type=${upload.fileType}`);
+              console.log(
+                `[Media Upload] Message created: uploadId=${uploadId}, messageId=${message._id}, fileUrl=${fileUrl}`,
+              );
 
+              // Update chat room with latest message
               await ChatRoom.findByIdAndUpdate(upload.roomId, {
                 lastMessage: message._id,
               });
+              console.log(
+                `[Media Upload] ChatRoom updated: uploadId=${uploadId}, roomId=${upload.roomId}`,
+              );
 
               const populatedMessage = await message.populate(
                 'senderId',
                 'fullName profileimageurl',
               );
 
+              // Emit to room (both participants)
+              console.log(
+                `[Media Upload] Emitting new_message to room: uploadId=${uploadId}, roomId=${upload.roomId}`,
+              );
               io.to(upload.roomId).emit('new_message', populatedMessage);
+
+              // Notify sender of successful upload
               socket.emit('upload_success', {
                 uploadId,
                 messageId: message._id,
+                fileUrl,
               });
+              console.log(
+                `[Media Upload] Sent upload_success to sender: uploadId=${uploadId}`,
+              );
 
+              // Notify counterpart (recipient)
               const room = await ChatRoom.findById(upload.roomId);
               if (room) {
                 const counterpartId =
@@ -884,24 +1226,35 @@ io.on('connection', async (socket) => {
                     ? room.plumberId
                     : room.homeOwnerId;
 
-                // Also emit new_message to counterpart's user room
-                io.to(`user_${counterpartId.toString()}`).emit('new_message', populatedMessage);
+                console.log(
+                  `[Media Upload] Notifying counterpart: uploadId=${uploadId}, counterpartId=${counterpartId}`,
+                );
+
+                // Emit new_message to counterpart's user room (they may not be in the active room)
+                io.to(`user_${counterpartId.toString()}`).emit(
+                  'new_message',
+                  populatedMessage,
+                );
 
                 const senderUser = await User.findById(upload.senderId);
                 const senderName = senderUser ? senderUser.fullName : 'Someone';
 
-                // Emit chat_notification for in-app toast/banner alerts when outside the chat route
-                io.to(`user_${counterpartId.toString()}`).emit('chat_notification', {
-                  roomId: upload.roomId.toString(),
-                  senderName,
-                  message: populatedMessage,
-                });
+                // Emit in-app chat notification
+                io.to(`user_${counterpartId.toString()}`).emit(
+                  'chat_notification',
+                  {
+                    roomId: upload.roomId.toString(),
+                    senderName,
+                    message: populatedMessage,
+                  },
+                );
 
+                // Send push notification
                 notificationService
                   .sendToUsers(
                     [counterpartId.toString()],
                     `New message from ${senderName}`,
-                    message.content || 'Sent a file',
+                    message.content || 'Sent an attachment',
                     {
                       roomId: upload.roomId.toString(),
                       messageId: message._id.toString(),
@@ -909,14 +1262,19 @@ io.on('connection', async (socket) => {
                   )
                   .catch((err) =>
                     console.error(
-                      'Failed sending upload chat notification:',
+                      '[Media Upload] Failed sending notification:',
                       err.message,
                     ),
                   );
               }
             } catch (err) {
-              console.error('Error completing file upload:', err.message);
-              handleFail(err.message || 'Failed to process completed file');
+              console.error(
+                `[Media Upload] Error completing file upload: uploadId=${uploadId}, error=${err.message}`,
+              );
+              handleFail(
+                err.message ||
+                  'Failed to process completed file. Check server logs.',
+              );
             }
           });
         };
@@ -939,8 +1297,10 @@ io.on('connection', async (socket) => {
           }
         }
       } catch (err) {
-        console.error('Error writing chunk:', err);
-        handleFail('Failed to write chunk data');
+        console.error(
+          `[Media Upload] Error writing chunk: uploadId=${uploadId}, chunkIndex=${idx}, error=${err.message}`,
+        );
+        handleFail(`Failed to write chunk data: ${err.message}`);
       }
     },
   );
@@ -1127,7 +1487,10 @@ io.on('connection', async (socket) => {
               },
             )
             .catch((err) =>
-              console.error('Failed sending AI chat notification:', err.message),
+              console.error(
+                'Failed sending AI chat notification:',
+                err.message,
+              ),
             );
 
           // Emit chat_notification for in-app toast/banner alerts when outside the chat route
