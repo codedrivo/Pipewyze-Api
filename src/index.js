@@ -47,8 +47,8 @@ const ALLOWED_MIME_TYPES = [
 function validateMagicBytes(filePath, fileType) {
   try {
     const fd = fs.openSync(filePath, 'r');
-    const buffer = Buffer.alloc(8);
-    fs.readSync(fd, buffer, 0, 8, 0);
+    const buffer = Buffer.alloc(32);
+    fs.readSync(fd, buffer, 0, 32, 0);
     fs.closeSync(fd);
 
     const hex = buffer.toString('hex').toUpperCase();
@@ -285,17 +285,17 @@ mongoose.connect(config.mongoose.url).then(() => {
 
           const senderUser = await User.findById(senderId);
           if (!senderUser) {
-            console.error(`Validation Failed: Sender ${senderId} not found.`);
+            const errorMsg = `Validation Failed: Sender ${senderId} not found.`;
+            console.error(errorMsg);
+            socket.emit('chat_error', { message: errorMsg });
             return;
           }
 
-          if (
-            senderUser.role !== 'home-owner' &&
-            senderUser.role !== 'licensed-plumber'
-          ) {
-            console.error(
-              `Validation Failed: Sender role ${senderUser.role} is not authorized for one-to-one chat.`,
-            );
+          const allowedRoles = ['home-owner', 'licensed-plumber', 'apprentice', 'admin', 'support'];
+          if (!allowedRoles.includes(senderUser.role)) {
+            const errorMsg = `Validation Failed: Sender role ${senderUser.role} is not authorized for chat.`;
+            console.error(errorMsg);
+            socket.emit('chat_error', { message: errorMsg });
             return;
           }
 
@@ -341,30 +341,27 @@ mongoose.connect(config.mongoose.url).then(() => {
               s.join(roomId);
             }
           } else {
-            // Verify existing room has valid roles
+            // Verify existing room participants exist
             const homeOwnerUser = await User.findById(room.homeOwnerId);
             const plumberUser = await User.findById(room.plumberId);
-            if (
-              !homeOwnerUser ||
-              homeOwnerUser.role !== 'home-owner' ||
-              !plumberUser ||
-              plumberUser.role !== 'licensed-plumber'
-            ) {
-              console.error(
-                `Validation Failed: Chat room participants are not valid home-owner and licensed-plumber.`,
-              );
+            if (!homeOwnerUser || !plumberUser) {
+              const errorMsg = 'Validation Failed: Chat room participants not found.';
+              console.error(errorMsg);
+              socket.emit('chat_error', { message: errorMsg });
               return;
             }
           }
 
-          // Validate that the sender is a participant in this room
+          // Validate that the sender is either a participant in the room or a staff/admin user
+          const isStaff = ['admin', 'support', 'apprentice'].includes(senderUser.role);
           if (
+            !isStaff &&
             room.homeOwnerId.toString() !== senderId &&
             room.plumberId.toString() !== senderId
           ) {
-            console.error(
-              `Validation Failed: Sender ${senderId} is not part of room ${roomId}`,
-            );
+            const errorMsg = `Validation Failed: Sender ${senderId} is not part of room ${roomId}`;
+            console.error(errorMsg);
+            socket.emit('chat_error', { message: errorMsg });
             return;
           }
 
@@ -420,26 +417,31 @@ mongoose.connect(config.mongoose.url).then(() => {
             }
 
             if (isBase64 && buffer) {
-              const extension = mimeType.split('/').pop() || 'bin';
-              const s3Folder = mimeType.startsWith('image/') ? 'images' : 'videos';
-              const uniqueKey = `PipeWyze/${s3Folder}/${crypto.randomUUID()}.${extension}`;
+              try {
+                const extension = mimeType.split('/').pop() || 'bin';
+                const s3Folder = mimeType.startsWith('image/') ? 'images' : 'videos';
+                const uniqueKey = `PipeWyze/${s3Folder}/${crypto.randomUUID()}.${extension}`;
 
-              const command = new PutObjectCommand({
-                Bucket: config.s3.S3_BUCKET_PATH,
-                Key: uniqueKey,
-                Body: buffer,
-                ContentType: mimeType,
-              });
+                const command = new PutObjectCommand({
+                  Bucket: config.s3.S3_BUCKET_PATH,
+                  Key: uniqueKey,
+                  Body: buffer,
+                  ContentType: mimeType,
+                });
 
-              await s3.send(command);
+                await s3.send(command);
 
-              if (config.s3.cloudfrontUrl) {
-                const baseUrl = config.s3.cloudfrontUrl.replace(/\/$/, '');
-                finalFileUrl = `${baseUrl}/${uniqueKey}`;
-              } else {
-                finalFileUrl = `https://${config.s3.S3_BUCKET_PATH}.s3.${config.s3.region}.amazonaws.com/${uniqueKey}`;
+                if (config.s3.cloudfrontUrl) {
+                  const baseUrl = config.s3.cloudfrontUrl.replace(/\/$/, '');
+                  finalFileUrl = `${baseUrl}/${uniqueKey}`;
+                } else {
+                  finalFileUrl = `https://${config.s3.S3_BUCKET_PATH}.s3.${config.s3.region}.amazonaws.com/${uniqueKey}`;
+                }
+                finalFileType = mimeType;
+              } catch (s3Err) {
+                console.error('[S3 Upload Error] Failed to upload base64 file to S3:', s3Err.message);
+                finalFileUrl = undefined;
               }
-              finalFileType = mimeType;
             }
           }
 
@@ -465,12 +467,12 @@ mongoose.connect(config.mongoose.url).then(() => {
                 );
               }
             }
-            finalContent = extractedFileName || 'File';
+            finalContent = extractedFileName || 'Attachment';
           }
 
           // Safeguard: Ensure finalContent and finalFileUrl do not contain raw base64 data dumps
           if (finalContent && finalContent.length > 100 && !finalContent.includes(' ') && /^[a-zA-Z0-9+/=]+$/.test(finalContent.replace(/\s/g, ''))) {
-            finalContent = fileName || 'Media File';
+            finalContent = fileName || 'Attachment';
           }
           if (finalFileUrl && finalFileUrl.length > 100 && !finalFileUrl.includes(' ') && !finalFileUrl.startsWith('http') && /^[a-zA-Z0-9+/=]+$/.test(finalFileUrl.replace(/\s/g, ''))) {
             finalFileUrl = undefined;
@@ -690,7 +692,10 @@ mongoose.connect(config.mongoose.url).then(() => {
             return;
           }
 
+          const senderUser = await User.findById(senderId);
+          const isStaff = senderUser && ['admin', 'support', 'apprentice'].includes(senderUser.role);
           if (
+            !isStaff &&
             room.homeOwnerId.toString() !== senderId &&
             room.plumberId.toString() !== senderId
           ) {
