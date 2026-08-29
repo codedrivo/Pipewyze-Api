@@ -86,7 +86,7 @@ const s3 = new S3Client({
   },
 });
 
-const http = require('https').createServer(app);
+const http = require('http').createServer(app);
 const io = require('socket.io')(http, {
   cors: {
     origin: '*',
@@ -101,12 +101,16 @@ app.use(bodyParser.urlencoded({ extended: false }));
 
 io.on('connection', async (socket) => {
   // Automatically join the socket to user's chat rooms on connection asynchronously
-  let userId = socket.handshake.query.userId;
-  const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+  let userId = socket.handshake.query?.userId;
+  let token = socket.handshake.auth?.token || 
+              socket.handshake.headers?.authorization || 
+              socket.handshake.query?.token;
 
-  if (!userId && token) {
+  if (token) {
     try {
-      const access = token.startsWith('Bearer ') ? token.split(' ')[1] : token;
+      const access = token.startsWith('Bearer ')
+        ? token.split(' ')[1]
+        : token;
       const jwt = require('jsonwebtoken');
       const config = require('./config/config');
       const data = jwt.verify(access, config.jwt.secret, {
@@ -185,21 +189,24 @@ io.on('connection', async (socket) => {
 
     const activeUserId = payloadUserId || socket.userId || userId;
     if (activeUserId) {
-      const checkUser = await User.findById(activeUserId);
-      if (
-        !checkUser ||
-        (checkUser.role !== 'home-owner' &&
-          checkUser.role !== 'licensed-plumber')
-      ) {
-        console.error(
-          `Access denied: User with role ${
+      try {
+        const checkUser = await User.findById(activeUserId);
+        const allowedRoles = ['home-owner', 'licensed-plumber', 'apprentice', 'admin', 'support'];
+        if (!checkUser || !allowedRoles.includes(checkUser.role)) {
+          const errorMsg = `Access denied: User with role ${
             checkUser ? checkUser.role : 'unknown'
-          } is not allowed in chat rooms.`,
-        );
+          } is not authorized in chat rooms.`;
+          console.error(errorMsg);
+          socket.emit('chat_error', { message: errorMsg });
+          return;
+        }
+        socket.userId = activeUserId;
+        socket.join(`user_${activeUserId}`);
+      } catch (err) {
+        console.error('Error verifying user role in join_room:', err);
+        socket.emit('chat_error', { message: 'Internal server error verifying authorization.' });
         return;
       }
-      socket.userId = activeUserId;
-      socket.join(`user_${activeUserId}`);
     }
 
     try {
@@ -448,6 +455,14 @@ io.on('connection', async (socket) => {
             }
           }
           finalContent = extractedFileName || 'File';
+        }
+
+        // Safeguard: Ensure finalContent and finalFileUrl do not contain raw base64 data dumps
+        if (finalContent && finalContent.length > 100 && !finalContent.includes(' ') && /^[a-zA-Z0-9+/=]+$/.test(finalContent.replace(/\s/g, ''))) {
+          finalContent = fileName || 'Media File';
+        }
+        if (finalFileUrl && finalFileUrl.length > 100 && !finalFileUrl.includes(' ') && !finalFileUrl.startsWith('http') && /^[a-zA-Z0-9+/=]+$/.test(finalFileUrl.replace(/\s/g, ''))) {
+          finalFileUrl = undefined;
         }
 
         // Save the message to DB
