@@ -1917,35 +1917,48 @@ async function uploadBase64ToS3(base64Payload, declaredFileType) {
   let mimeType = declaredFileType || 'image/jpeg';
   let cleanBase64 = base64Payload;
 
-  // Extract MIME and strip Data URI scheme if present
-  if (base64Payload.startsWith('data:')) {
-    const matches = base64Payload.match(/^data:([^;]+);base64,(.+)$/s);
+  // 1. Strip Markdown links, brackets, or accidental URL encapsulation
+  if (typeof cleanBase64 === 'string') {
+    cleanBase64 = cleanBase64.replace(/\]\(http[^\)]+\)/g, '').trim();
+  }
+
+  // 2. Extract MIME from data URI scheme if provided
+  if (cleanBase64.startsWith('data:')) {
+    const matches = cleanBase64.match(/^data:([^;]+);base64,(.+)$/s);
     if (matches && matches.length === 3) {
       mimeType = matches[1];
       cleanBase64 = matches[2];
     } else {
-      cleanBase64 = base64Payload.split(';base64,')[1] || base64Payload;
+      cleanBase64 = cleanBase64.split(';base64,')[1] || cleanBase64;
     }
   }
 
+  // 3. Remove whitespace and newlines from Base64 string
   cleanBase64 = cleanBase64.replace(/\s/g, '');
   const buffer = Buffer.from(cleanBase64, 'base64');
 
-  let extension = mimeType.split('/').pop() || 'bin';
+  // 4. Resolve clean extension
+  let extension = mimeType.split('/').pop().toLowerCase();
   if (extension === 'quicktime') extension = 'mov';
+  if (extension === 'jpeg') extension = 'jpg';
 
   const folder = mimeType.startsWith('video/') ? 'videos' : 'images';
-  const uniqueKey = `PipeWyze/${folder}/${crypto.randomUUID()}.${extension}`;
+  const fileName = `${crypto.randomUUID()}.${extension}`;
+  const uniqueKey = `PipeWyze/${folder}/${fileName}`;
 
-  await s3.send(
-    new PutObjectCommand({
-      Bucket: config.s3.S3_BUCKET_PATH,
-      Key: uniqueKey,
-      Body: buffer,
-      ContentType: mimeType,
-    })
-  );
+  // 5. Send to S3 with explicit ContentType and ContentLength
+  const command = new PutObjectCommand({
+    Bucket: config.s3.S3_BUCKET_PATH,
+    Key: uniqueKey,
+    Body: buffer,
+    ContentType: mimeType,
+    ContentLength: buffer.length,
+  });
 
+  const uploadResult = await s3.send(command);
+  console.log(`[S3 Upload Success] ETag: ${uploadResult.ETag}, Key: ${uniqueKey}`);
+
+  // 6. Generate clean URL
   const fileUrl = config.s3.cloudfrontUrl
     ? `${config.s3.cloudfrontUrl.replace(/\/$/, '')}/${uniqueKey}`
     : `https://${config.s3.S3_BUCKET_PATH}.s3.${config.s3.region}.amazonaws.com/${uniqueKey}`;
