@@ -1891,12 +1891,8 @@ const app = express();
 const http = require('http');
 const socketIo = require('socket.io');
 const jwt = require('jsonwebtoken');
-const fs = require('fs');
-const path = require('path');
 const crypto = require('crypto');
-const os = require('os');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
-const axios = require('axios');
 
 const config = require('./config/config');
 const ChatRoom = require('./models/chatRoom.model');
@@ -1907,119 +1903,7 @@ const AiChat = require('./models/aiChat.model');
 const notificationService = require('./services/notification.service');
 
 // -----------------------------------------------------------------------------
-// UPLOAD CONFIGURATION & TEMP DIRECTORY
-// -----------------------------------------------------------------------------
-const tempDir = path.join(os.tmpdir(), 'pipewyze_uploads');
-if (!fs.existsSync(tempDir)) {
-  fs.mkdirSync(tempDir, { recursive: true });
-}
-
-const activeUploads = new Map();
-const MAX_UPLOAD_SIZE = 500 * 1024 * 1024; // 500 MB max total file size
-const MAX_CHUNK_SIZE = 5 * 1024 * 1024;   // 5 MB max per chunk
-const UPLOAD_TIMEOUT_MS = 15 * 60 * 1000;  // 15 minutes timeout
-
-const ALLOWED_MIME_TYPES = [
-  'image/jpeg',
-  'image/jpg',
-  'image/png',
-  'image/webp',
-  'image/heic',
-  'image/heif',
-  'image/gif',
-  'video/mp4',
-  'video/quicktime',
-  'video/mov',
-  'video/webm',
-  'application/octet-stream',
-];
-
-function inferMimeTypeFromFilename(fileName) {
-  if (!fileName) return null;
-  const ext = fileName.toLowerCase().split('.').pop();
-  const mimeMap = {
-    jpg: 'image/jpeg',
-    jpeg: 'image/jpeg',
-    png: 'image/png',
-    gif: 'image/gif',
-    webp: 'image/webp',
-    heic: 'image/heic',
-    heif: 'image/heif',
-    mp4: 'video/mp4',
-    mov: 'video/quicktime',
-    qt: 'video/quicktime',
-    webm: 'video/webm',
-    m4v: 'video/mp4',
-    '3gp': 'video/mp4',
-  };
-  return mimeMap[ext] || null;
-}
-
-function validateMagicBytes(filePath, fileType) {
-  let fd = null;
-  try {
-    const buffer = Buffer.alloc(64);
-    fd = fs.openSync(filePath, 'r');
-    const bytesRead = fs.readSync(fd, buffer, 0, 64, 0);
-    fs.closeSync(fd);
-    fd = null;
-
-    if (bytesRead < 4) return false;
-
-    const hex = buffer.toString('hex').toUpperCase();
-
-    const isJpeg = hex.startsWith('FFD8FF');
-    const isPng = hex.startsWith('89504E470D0A1A0A');
-    const isGif = hex.startsWith('47494638');
-    const isWebp = hex.startsWith('52494646') && buffer.slice(8, 12).toString('ascii') === 'WEBP';
-    const isWebm = hex.startsWith('1A45DFA3');
-
-    const isISOBMFF = bytesRead >= 8 && buffer.slice(4, 8).toString('ascii') === 'ftyp';
-    let ftypBrand = '';
-    if (isISOBMFF && bytesRead >= 12) {
-      ftypBrand = buffer.slice(8, 12).toString('ascii').trim().toLowerCase();
-    }
-
-    const isMp4 = isISOBMFF && ['isom', 'iso2', 'avc1', 'mp41', 'mp42', 'mp43', 'mmp4', 'dash'].includes(ftypBrand);
-    const isMov = (isISOBMFF && (ftypBrand === 'qt  ' || ftypBrand.startsWith('qt'))) || hex.startsWith('00000014667479707174');
-    const isHeic = isISOBMFF && ['mif1', 'msf1', 'heic', 'heix', 'hevc', 'hevx', 'fvt1'].includes(ftypBrand);
-
-    switch (fileType) {
-      case 'image/jpeg':
-      case 'image/jpg':
-        return isJpeg;
-      case 'image/png':
-        return isPng;
-      case 'image/gif':
-        return isGif;
-      case 'image/webp':
-        return isWebp;
-      case 'image/heic':
-      case 'image/heif':
-        return isHeic || isISOBMFF;
-      case 'video/mp4':
-        return isMp4 || isISOBMFF;
-      case 'video/quicktime':
-      case 'video/mov':
-        return isMov || isISOBMFF;
-      case 'video/webm':
-        return isWebm;
-      case 'application/octet-stream':
-        return isJpeg || isPng || isGif || isWebp || isHeic || isMp4 || isMov || isWebm || isISOBMFF;
-      default:
-        return true;
-    }
-  } catch (err) {
-    if (fd !== null) {
-      try { fs.closeSync(fd); } catch (_) {}
-    }
-    console.error('[MagicBytes Validation Error]:', err.message);
-    return false;
-  }
-}
-
-// -----------------------------------------------------------------------------
-// S3 SETUP
+// S3 CONFIGURATION & HELPER
 // -----------------------------------------------------------------------------
 const s3 = new S3Client({
   region: config.s3.region,
@@ -2029,26 +1913,30 @@ const s3 = new S3Client({
   },
 });
 
-async function uploadFileStreamToS3(filePath, s3Key, mimeType, contentLength) {
-  const fileStream = fs.createReadStream(filePath);
-  const command = new PutObjectCommand({
-    Bucket: config.s3.S3_BUCKET_PATH,
-    Key: s3Key,
-    Body: fileStream,
-    ContentType: mimeType,
-    ContentLength: contentLength,
-  });
-  await s3.send(command);
-  if (config.s3.cloudfrontUrl) {
-    return `${config.s3.cloudfrontUrl.replace(/\/$/, '')}/${s3Key}`;
-  }
-  return `https://${config.s3.S3_BUCKET_PATH}.s3.${config.s3.region}.amazonaws.com/${s3Key}`;
-}
+async function uploadBase64ToS3(base64Payload, declaredFileType) {
+  let mimeType = declaredFileType || 'image/jpeg';
+  let cleanBase64 = base64Payload;
 
-async function uploadBufferToS3(buffer, mimeType) {
-  const extension = mimeType.split('/').pop() || 'bin';
-  const folder = mimeType.startsWith('image/') ? 'images' : 'videos';
+  // Extract MIME and strip Data URI scheme if present
+  if (base64Payload.startsWith('data:')) {
+    const matches = base64Payload.match(/^data:([^;]+);base64,(.+)$/s);
+    if (matches && matches.length === 3) {
+      mimeType = matches[1];
+      cleanBase64 = matches[2];
+    } else {
+      cleanBase64 = base64Payload.split(';base64,')[1] || base64Payload;
+    }
+  }
+
+  cleanBase64 = cleanBase64.replace(/\s/g, '');
+  const buffer = Buffer.from(cleanBase64, 'base64');
+
+  let extension = mimeType.split('/').pop() || 'bin';
+  if (extension === 'quicktime') extension = 'mov';
+
+  const folder = mimeType.startsWith('video/') ? 'videos' : 'images';
   const uniqueKey = `PipeWyze/${folder}/${crypto.randomUUID()}.${extension}`;
+
   await s3.send(
     new PutObjectCommand({
       Bucket: config.s3.S3_BUCKET_PATH,
@@ -2057,10 +1945,12 @@ async function uploadBufferToS3(buffer, mimeType) {
       ContentType: mimeType,
     })
   );
-  if (config.s3.cloudfrontUrl) {
-    return `${config.s3.cloudfrontUrl.replace(/\/$/, '')}/${uniqueKey}`;
-  }
-  return `https://${config.s3.S3_BUCKET_PATH}.s3.${config.s3.region}.amazonaws.com/${uniqueKey}`;
+
+  const fileUrl = config.s3.cloudfrontUrl
+    ? `${config.s3.cloudfrontUrl.replace(/\/$/, '')}/${uniqueKey}`
+    : `https://${config.s3.S3_BUCKET_PATH}.s3.${config.s3.region}.amazonaws.com/${uniqueKey}`;
+
+  return { fileUrl, fileType: mimeType };
 }
 
 const extractUserId = (socket) => {
@@ -2086,23 +1976,6 @@ const extractUserId = (socket) => {
   return userId ? userId.toString() : null;
 };
 
-function cleanupUploadSession(uploadId) {
-  const upload = activeUploads.get(uploadId);
-  if (!upload) return;
-  if (upload.timeoutId) clearTimeout(upload.timeoutId);
-  if (upload.writeStream && !upload.writeStream.destroyed) {
-    upload.writeStream.destroy();
-  }
-  if (upload.tempFilePath && fs.existsSync(upload.tempFilePath)) {
-    try {
-      fs.unlinkSync(upload.tempFilePath);
-    } catch (err) {
-      console.warn(`[Upload Cleanup] Failed unlinking ${upload.tempFilePath}:`, err.message);
-    }
-  }
-  activeUploads.delete(uploadId);
-}
-
 // -----------------------------------------------------------------------------
 // STANDALONE SOCKET SERVER SETUP
 // -----------------------------------------------------------------------------
@@ -2112,17 +1985,15 @@ const io = socketIo(server, {
     origin: '*',
     methods: ['GET', 'POST'],
   },
-  maxHttpBufferSize: 100 * 1024 * 1024,
+  maxHttpBufferSize: 100 * 1024 * 1024, // 100 MB max buffer for base64 media payloads
   pingTimeout: 60000,
   pingInterval: 25000,
 });
 global.io = io;
 
 app.use(express.static(__dirname));
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: false }));
-
-const usersInRoom = new Map();
+app.use(bodyParser.json({ limit: '100mb' }));
+app.use(bodyParser.urlencoded({ extended: false, limit: '100mb' }));
 
 io.on('connection', async (socket) => {
   let userId = extractUserId(socket);
@@ -2200,7 +2071,7 @@ io.on('connection', async (socket) => {
   });
 
   // ---------------------------------------------------------------------------
-  // EVENT: send_message
+  // EVENT: send_message (Base64 Media & Text Chat)
   // ---------------------------------------------------------------------------
   socket.on('send_message', async ({ roomId, senderId, receiverId, content, fileUrl, fileType, fileName }) => {
     try {
@@ -2228,42 +2099,59 @@ io.on('connection', async (socket) => {
 
       socket.join(roomId);
 
-      let finalFileUrl = fileUrl || null;
+      let finalFileUrl = null;
       let finalFileType = fileType || null;
-      let finalContent = typeof content === 'string' ? content.trim() : '';
 
-      // Upload inline base64 if sent
-      if (finalFileUrl && (finalFileUrl.startsWith('data:') || finalFileUrl.length > 500)) {
-        try {
-          const base64Data = finalFileUrl.includes(';base64,')
-            ? finalFileUrl.split(';base64,')[1]
-            : finalFileUrl;
-          const mime = finalFileUrl.startsWith('data:')
-            ? finalFileUrl.substring(5, finalFileUrl.indexOf(';'))
-            : (fileType || 'image/jpeg');
-
-          const buffer = Buffer.from(base64Data, 'base64');
-          finalFileUrl = await uploadBufferToS3(buffer, mime);
-          finalFileType = mime;
-        } catch (s3Err) {
-          console.error('[S3 Upload Error] Failed uploading base64:', s3Err.message);
-          finalFileUrl = null;
+      // Handle Base64 strings vs direct HTTP/S3 URLs
+      if (fileUrl) {
+        if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
+          finalFileUrl = fileUrl;
+        } else {
+          try {
+            console.log(`[Media Upload] Processing Base64 media for room: ${roomId}`);
+            const uploadResult = await uploadBase64ToS3(fileUrl, fileType);
+            finalFileUrl = uploadResult.fileUrl;
+            finalFileType = uploadResult.fileType;
+            console.log(`[Media Upload] S3 upload successful: ${finalFileUrl}`);
+          } catch (uploadErr) {
+            console.error('[Media Upload Error] S3 upload failed:', uploadErr.message);
+            socket.emit('chat_error', { message: 'Media upload failed.' });
+            return;
+          }
         }
       }
 
-      // Safeguard against raw Base64 string dump in content
-      if (!finalContent || finalContent.startsWith('data:') || finalContent.length > 300) {
-        if (finalFileUrl) {
-          finalContent = fileName || (finalFileType?.startsWith('video/') ? 'Video' : 'Photo');
-        } else {
-          finalContent = 'Attachment';
+      // Infer fileType from URL extension if not supplied
+      if (!finalFileType && finalFileUrl) {
+        const cleanUrl = finalFileUrl.split('?')[0].toLowerCase();
+        if (/\.(mp4|mov|quicktime|webm|m4v|3gp)$/.test(cleanUrl)) {
+          finalFileType = 'video/mp4';
+        } else if (/\.(jpg|jpeg|png|gif|webp|heic|heif)$/.test(cleanUrl)) {
+          finalFileType = 'image/jpeg';
         }
+      }
+
+      // Determine if media is a video
+      const isVideo =
+        (finalFileType && finalFileType.startsWith('video/')) ||
+        /\.(mp4|mov|quicktime|webm|m4v|3gp)$/i.test(finalFileUrl || fileName || '');
+
+      // Content fallback rules: "Video" vs "Photo"
+      let finalContent = typeof content === 'string' ? content.trim() : '';
+
+      const isUuidOrFilename =
+        finalContent === fileName ||
+        /^[0-9a-fA-F-]{36}\.[a-zA-Z0-9]+$/.test(finalContent) ||
+        /\.(mp4|mov|jpg|jpeg|png|webp|heic)$/i.test(finalContent);
+
+      if ((!finalContent || isUuidOrFilename) && finalFileUrl) {
+        finalContent = isVideo ? 'Video' : 'Photo';
       }
 
       const message = await Message.create({
         roomId,
         senderId,
-        content: finalContent,
+        content: finalContent || (isVideo ? 'Video' : 'Photo'),
         fileUrl: finalFileUrl,
         fileType: finalFileType,
       });
@@ -2273,6 +2161,8 @@ io.on('connection', async (socket) => {
       }
 
       const populatedMessage = await message.populate('senderId', 'fullName profileimageurl');
+
+      // Realtime room emission
       io.to(roomId).emit('new_message', populatedMessage);
 
       if (room) {
@@ -2292,289 +2182,19 @@ io.on('connection', async (socket) => {
           .sendToUsers(
             [counterpartId],
             `New message from ${senderUser.fullName || 'Someone'}`,
-            finalContent || 'Sent an attachment',
+            finalContent || (isVideo ? 'Sent a video' : 'Sent a photo'),
             { roomId: roomId.toString(), messageId: message._id.toString() },
           )
-          .catch((err) => console.error('Failed sending chat notification:', err.message));
+          .catch((err) => console.error('[Push Notification Error]:', err.message));
       }
     } catch (error) {
-      console.error('send_message error:', error.message);
+      console.error('[send_message Error]:', error.message);
       socket.emit('chat_error', { message: 'Failed to send message.' });
     }
   });
 
   // ---------------------------------------------------------------------------
-  // EVENT: start_upload (Mobile Binary Streaming Handshake)
-  // ---------------------------------------------------------------------------
-  socket.on('start_upload', async (payload) => {
-    const { uploadId, roomId, senderId, fileName, fileType, fileSize, totalChunks } = payload || {};
-
-    console.log(`[Media Upload] start_upload: id=${uploadId}, file=${fileName}, chunks=${totalChunks}`);
-
-    if (!uploadId || !roomId || !senderId || !fileName || totalChunks === undefined) {
-      socket.emit('upload_error', {
-        uploadId,
-        error: 'Missing required metadata (uploadId, roomId, senderId, fileName, totalChunks)',
-      });
-      return;
-    }
-
-    if (typeof fileName !== 'string' || fileName.includes('/') || fileName.includes('\\') || fileName.includes('..')) {
-      socket.emit('upload_error', { uploadId, error: 'Invalid file name' });
-      return;
-    }
-
-    const chunks = parseInt(totalChunks, 10);
-    if (isNaN(chunks) || chunks <= 0 || chunks > 10000) {
-      socket.emit('upload_error', { uploadId, error: 'Invalid total chunks count' });
-      return;
-    }
-
-    let parsedSize = null;
-    if (fileSize !== undefined && fileSize !== null) {
-      parsedSize = parseInt(fileSize, 10);
-      if (isNaN(parsedSize) || parsedSize <= 0 || parsedSize > MAX_UPLOAD_SIZE) {
-        socket.emit('upload_error', { uploadId, error: `Invalid file size. Max: ${MAX_UPLOAD_SIZE / (1024 * 1024)}MB` });
-        return;
-      }
-    }
-
-    let finalFileType = fileType;
-    if (!fileType || fileType === 'application/octet-stream') {
-      const inferred = inferMimeTypeFromFilename(fileName);
-      if (inferred) finalFileType = inferred;
-    }
-
-    if (!ALLOWED_MIME_TYPES.includes(finalFileType)) {
-      socket.emit('upload_error', { uploadId, error: `Unsupported file type: ${finalFileType}` });
-      return;
-    }
-
-    try {
-      const room = await ChatRoom.findById(roomId);
-      if (!room) {
-        socket.emit('upload_error', { uploadId, error: 'Chat room not found' });
-        return;
-      }
-
-      cleanupUploadSession(uploadId);
-
-      const ext = fileName.split('.').pop() || 'bin';
-      const tempFilePath = path.join(tempDir, `${uploadId}.${ext}`);
-      const writeStream = fs.createWriteStream(tempFilePath, { flags: 'w' });
-
-      const timeoutId = setTimeout(() => {
-        console.warn(`[Media Upload] Upload session ${uploadId} timed out`);
-        cleanupUploadSession(uploadId);
-        socket.emit('upload_error', { uploadId, error: 'Upload timed out' });
-      }, UPLOAD_TIMEOUT_MS);
-
-      activeUploads.set(uploadId, {
-        uploadId,
-        socketId: socket.id,
-        roomId,
-        senderId: senderId.toString(),
-        fileName,
-        fileType: finalFileType,
-        fileSize: parsedSize,
-        totalChunks: chunks,
-        expectedChunkIndex: 0,
-        receivedChunks: 0,
-        tempFilePath,
-        writeStream,
-        timeoutId,
-        chunksWritten: new Set(),
-      });
-
-      socket.emit('upload_ready', { uploadId });
-    } catch (err) {
-      console.error('Error starting upload:', err.message);
-      socket.emit('upload_error', { uploadId, error: 'Internal server error starting upload' });
-    }
-  });
-
-  // ---------------------------------------------------------------------------
-  // EVENT: upload_chunk (Streaming Chunks)
-  // ---------------------------------------------------------------------------
-  socket.on('upload_chunk', async (payload, callback) => {
-    const { uploadId, chunkIndex, chunkData } = payload || {};
-    const upload = activeUploads.get(uploadId);
-
-    const handleFail = (errorMsg) => {
-      cleanupUploadSession(uploadId);
-      console.error(`[Media Upload Error] uploadId=${uploadId}: ${errorMsg}`);
-      socket.emit('upload_error', { uploadId, error: errorMsg });
-      if (typeof callback === 'function') callback({ status: 'error', error: errorMsg });
-    };
-
-    if (!upload) {
-      handleFail('Upload session not found');
-      return;
-    }
-
-    const idx = parseInt(chunkIndex, 10);
-    if (isNaN(idx) || idx < 0 || idx >= upload.totalChunks) {
-      handleFail(`Invalid chunk index: ${idx}`);
-      return;
-    }
-
-    if (upload.chunksWritten.has(idx)) {
-      socket.emit('upload_chunk_ack', { uploadId, chunkIndex: idx });
-      if (typeof callback === 'function') callback({ status: 'ok', chunkIndex: idx });
-      return;
-    }
-
-    if (idx !== upload.expectedChunkIndex) {
-      handleFail(`Out of order chunk. Expected: ${upload.expectedChunkIndex}, got: ${idx}`);
-      return;
-    }
-
-    // Binary ingestion from mobile
-    let buffer;
-    try {
-      if (Buffer.isBuffer(chunkData)) {
-        buffer = chunkData;
-      } else if (chunkData instanceof ArrayBuffer) {
-        buffer = Buffer.from(chunkData);
-      } else if (ArrayBuffer.isView(chunkData)) {
-        buffer = Buffer.from(chunkData.buffer, chunkData.byteOffset, chunkData.byteLength);
-      } else if (typeof chunkData === 'string') {
-        const base64Content = chunkData.includes(';base64,') ? chunkData.split(';base64,')[1] : chunkData;
-        buffer = Buffer.from(base64Content, 'base64');
-      } else {
-        buffer = Buffer.from(chunkData);
-      }
-    } catch (convErr) {
-      handleFail('Failed to parse chunk binary buffer: ' + convErr.message);
-      return;
-    }
-
-    if (buffer.length === 0 || buffer.length > MAX_CHUNK_SIZE) {
-      handleFail(`Invalid chunk size: ${buffer.length} bytes`);
-      return;
-    }
-
-    upload.writeStream.write(buffer, (writeErr) => {
-      if (writeErr) {
-        handleFail('Filesystem write error: ' + writeErr.message);
-        return;
-      }
-
-      upload.chunksWritten.add(idx);
-      upload.receivedChunks++;
-      upload.expectedChunkIndex++;
-
-      socket.emit('upload_chunk_ack', { uploadId, chunkIndex: idx });
-      if (typeof callback === 'function') callback({ status: 'ok', chunkIndex: idx });
-
-      const progress = Math.round((upload.receivedChunks / upload.totalChunks) * 100);
-      socket.emit('upload_progress', { uploadId, chunkIndex: idx, progress });
-
-      if (upload.receivedChunks === upload.totalChunks) {
-        clearTimeout(upload.timeoutId);
-        console.log(`[Media Upload] All chunks received for ${uploadId}. Finalizing...`);
-
-        upload.writeStream.end(async () => {
-          try {
-            if (!fs.existsSync(upload.tempFilePath)) {
-              throw new Error('Assembled temp file not found');
-            }
-
-            const stats = fs.statSync(upload.tempFilePath);
-            if (stats.size === 0) {
-              throw new Error('Uploaded file is empty (0 bytes)');
-            }
-
-            if (!validateMagicBytes(upload.tempFilePath, upload.fileType)) {
-              throw new Error(`Magic-byte validation mismatch for type: ${upload.fileType}`);
-            }
-
-            const extension = upload.fileName.split('.').pop() || 'bin';
-            const s3Folder = upload.fileType.startsWith('image/') ? 'images' : 'videos';
-            const uniqueS3Key = `PipeWyze/${s3Folder}/${crypto.randomUUID()}.${extension}`;
-
-            console.log(`[Media Upload] Uploading to S3: ${uniqueS3Key}`);
-            const fileUrl = await uploadFileStreamToS3(upload.tempFilePath, uniqueS3Key, upload.fileType, stats.size);
-
-            cleanupUploadSession(uploadId);
-
-            const message = await Message.create({
-              roomId: upload.roomId,
-              senderId: upload.senderId,
-              content: upload.fileName,
-              fileUrl,
-              fileType: upload.fileType,
-            });
-
-            await ChatRoom.findByIdAndUpdate(upload.roomId, { lastMessage: message._id });
-            const populatedMessage = await message.populate('senderId', 'fullName profileimageurl');
-
-            io.to(upload.roomId).emit('new_message', populatedMessage);
-            socket.emit('upload_success', {
-              uploadId,
-              messageId: message._id,
-              fileUrl,
-            });
-
-            const room = await ChatRoom.findById(upload.roomId);
-            if (room) {
-              const counterpartId =
-                room.homeOwnerId.toString() === upload.senderId.toString()
-                  ? room.plumberId.toString()
-                  : room.homeOwnerId.toString();
-
-              io.to(`user_${counterpartId}`).emit('new_message', populatedMessage);
-              io.to(`user_${counterpartId}`).emit('chat_notification', {
-                roomId: upload.roomId.toString(),
-                senderName: populatedMessage.senderId?.fullName || 'Someone',
-                message: populatedMessage,
-              });
-
-              notificationService
-                .sendToUsers(
-                  [counterpartId],
-                  `New message from ${populatedMessage.senderId?.fullName || 'Someone'}`,
-                  upload.fileName || 'Sent a file',
-                  { roomId: upload.roomId.toString(), messageId: message._id.toString() },
-                )
-                .catch((err) => console.error('[Media Upload] Notification failed:', err.message));
-            }
-          } catch (err) {
-            console.error(`[Media Upload Complete Error]:`, err.message);
-            handleFail(err.message || 'Failed to process completed upload');
-          }
-        });
-      }
-    });
-  });
-
-  socket.on('disconnect', async () => {
-    const activeUserId = socket.userId || userId;
-    if (activeUserId) {
-      const sockets = await io.fetchSockets();
-      const hasOtherSockets = sockets.some((s) => s.userId === activeUserId && s.id !== socket.id);
-      if (!hasOtherSockets) {
-        User.findByIdAndUpdate(activeUserId, { isOnline: false })
-          .exec()
-          .then(() => console.log(`User disconnected & marked offline: ${activeUserId}`))
-          .catch((err) => console.error(err));
-        io.emit('user_status_changed', {
-          userId: activeUserId,
-          isOnline: false,
-        });
-      }
-    }
-
-    for (const [uploadId, upload] of activeUploads.entries()) {
-      if (upload.socketId === socket.id) {
-        console.warn(`[Media Upload] Disconnect cleanup for uploadId: ${uploadId}`);
-        cleanupUploadSession(uploadId);
-      }
-    }
-  });
-
-  // ---------------------------------------------------------------------------
-  // EVENT: ask_ai
+  // EVENT: ask_ai (AI Assistant)
   // ---------------------------------------------------------------------------
   socket.on('ask_ai', async ({ message, userId: payloadUserId, fileUrl, fileType, fileName }) => {
     const activeUserId = payloadUserId || socket.userId || userId;
@@ -2593,16 +2213,24 @@ io.on('connection', async (socket) => {
         return;
       }
 
-      let finalFileUrl = fileUrl;
-      if (fileUrl && fileUrl.startsWith('data:')) {
-        const matches = fileUrl.match(/^data:([^;]+);base64,([\s\S]+)$/);
-        if (matches && matches.length === 3) {
-          const buffer = Buffer.from(matches[2], 'base64');
-          finalFileUrl = await uploadBufferToS3(buffer, matches[1]);
+      let finalFileUrl = fileUrl || '';
+      let finalFileType = fileType || '';
+
+      if (fileUrl && !fileUrl.startsWith('http')) {
+        try {
+          const uploadResult = await uploadBase64ToS3(fileUrl, fileType);
+          finalFileUrl = uploadResult.fileUrl;
+          finalFileType = uploadResult.fileType;
+        } catch (e) {
+          console.error('[AI Base64 Upload Error]:', e.message);
         }
       }
 
-      let cleanMessage = message ? message.trim() : fileName || 'File';
+      const isVideo =
+        (finalFileType && finalFileType.startsWith('video/')) ||
+        /\.(mp4|mov|quicktime|webm|m4v|3gp)$/i.test(finalFileUrl || fileName || '');
+
+      let cleanMessage = message ? message.trim() : (isVideo ? 'Video' : 'Photo');
       const allVideos = await AiVideo.find({ targetAudience: user.role }).lean();
       const queryWords = cleanMessage.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
       const matchedVideos = allVideos.filter((video) =>
@@ -2632,7 +2260,7 @@ io.on('connection', async (socket) => {
         response: aiMessage,
         suggestedVideo,
         fileUrl: finalFileUrl || '',
-        fileType: fileType || '',
+        fileType: finalFileType || '',
         fileName: fileName || '',
       });
 
@@ -2641,12 +2269,30 @@ io.on('connection', async (socket) => {
         message: aiMessage,
         suggestedVideo,
         fileUrl: finalFileUrl || '',
-        fileType: fileType || '',
+        fileType: finalFileType || '',
         fileName: fileName || '',
       });
     } catch (err) {
       console.error('[ask_ai Error]:', err.message);
       socket.emit('ai_error', { message: 'Failed to generate response from AI Assistant.' });
+    }
+  });
+
+  socket.on('disconnect', async () => {
+    const activeUserId = socket.userId || userId;
+    if (activeUserId) {
+      const sockets = await io.fetchSockets();
+      const hasOtherSockets = sockets.some((s) => s.userId === activeUserId && s.id !== socket.id);
+      if (!hasOtherSockets) {
+        User.findByIdAndUpdate(activeUserId, { isOnline: false })
+          .exec()
+          .then(() => console.log(`User disconnected & marked offline: ${activeUserId}`))
+          .catch((err) => console.error(err));
+        io.emit('user_status_changed', {
+          userId: activeUserId,
+          isOnline: false,
+        });
+      }
     }
   });
 });
