@@ -12,13 +12,9 @@ const User = require('./models/user.model');
 const Setting = require('./models/setting.model');
 const axios = require('axios');
 const AiVideo = require('./models/aiVideo.model');
-const SettingModel = require('./models/setting.model');
+//const SettingModel = require('./models/setting.model');
 const ChatRoom = require('./models/chatRoom.model');
 const Message = require('./models/message.model');
-const Group = require('./models/Group.model');
-const Auction = require('./models/Auction.model');
-const Team = require('./models/Team.model');
-const Teamtransaction = require('./models/Teamtransaction.model');
 const notificationService = require('./services/notification.service');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const fs = require('fs');
@@ -43,7 +39,7 @@ const s3 = new S3Client({
 });
 
 const usersInRoom = new Map();
-const groupAuctionState = new Map();
+//const groupAuctionState = new Map();
 
 let io, server;
 
@@ -596,35 +592,36 @@ mongoose.connect(config.mongoose.url).then(() => {
       );
     });
 
-    socket.on('auctionaddmessage', ({ auctionData, groupId }) => {
-      io.to(groupId).emit('auctionaddmessage', { auctionData });
-
-      const state = groupAuctionState.get(groupId);
-      if (state?.activeTeam) {
-        console.log(
-          `New bid received, restarting countdown for ${state.activeTeam.teamName}`,
-        );
-        startCountdown(groupId, state.activeTeam, 20);
-      }
-    });
-
-    socket.on('pause_auction', async ({ duration }) => {
-      const groups = await Group.find().lean();
-
-      for (const group of groups) {
-        const groupId = group._id.toString();
-
-        if (!groupAuctionState.has(groupId)) {
-          groupAuctionState.set(groupId, {});
-        }
-
-        const state = groupAuctionState.get(groupId);
-        state.pauseAuction = true;
-        state.pauseduration = duration;
-        state.pauseTimeout = null;
-        console.log(state);
-      }
-    });
+    // TODO: Auction functionality disabled - requires Group, Auction, Team, Teamtransaction models
+    // socket.on('auctionaddmessage', ({ auctionData, groupId }) => {
+    //   io.to(groupId).emit('auctionaddmessage', { auctionData });
+    //
+    //   const state = groupAuctionState.get(groupId);
+    //   if (state?.activeTeam) {
+    //     console.log(
+    //       `New bid received, restarting countdown for ${state.activeTeam.teamName}`,
+    //     );
+    //     startCountdown(groupId, state.activeTeam, 20);
+    //   }
+    // });
+    //
+    // socket.on('pause_auction', async ({ duration }) => {
+    //   const groups = await Group.find().lean();
+    //
+    //   for (const group of groups) {
+    //     const groupId = group._id.toString();
+    //
+    //     if (!groupAuctionState.has(groupId)) {
+    //       groupAuctionState.set(groupId, {});
+    //     }
+    //
+    //     const state = groupAuctionState.get(groupId);
+    //     state.pauseAuction = true;
+    //     state.pauseduration = duration;
+    //     state.pauseTimeout = null;
+    //     console.log(state);
+    //   }
+    // });
 
     socket.on('disconnect', async () => {
       const activeUserId = socket.userId || userId;
@@ -1221,171 +1218,34 @@ For general conversation or greetings, you MUST set "youtubeUrl" to null.
     logger.info(`Socket.IO server running on port ${socketPort}`);
   });
 
-  const startCountdown = (groupId, team, seconds) => {
-    const state = groupAuctionState.get(groupId) || {};
-    if (state.countdownTimer) clearInterval(state.countdownTimer);
-
-    state.activeTeam = team;
-    groupAuctionState.set(groupId, state);
-
-    state.countdownTimer = setInterval(() => {
-      if (seconds <= 0) {
-        clearInterval(state.countdownTimer);
-        processBid(groupId, team);
-        return;
-      }
-
-      io.to(groupId).emit('countdownUpdate', {
-        team,
-        secondsLeft: seconds,
-      });
-
-      seconds--;
-    }, 1000);
-  };
-
-  const processBid = async (groupId, team) => {
-    if (!team) return;
-
-    const highestAuction = await Auction.findOne({
-      teamID: team._id,
-      groupId: groupId,
-    })
-      .sort({ amount: -1 })
-      .lean();
-
-    if (highestAuction) {
-      const userData = await User.findById(highestAuction.userId).lean();
-
-      if (userData && userData.amount >= highestAuction.amount) {
-        const netAmount = userData.amount - highestAuction.amount;
-        await User.updateOne({ _id: userData._id }, { amount: netAmount });
-
-        const groupMap = usersInRoom.get(groupId);
-        if (groupMap?.has(userData._id.toString())) {
-          const userEntry = groupMap.get(userData._id.toString());
-          userEntry.user.amount = netAmount;
-          groupMap.set(userData._id.toString(), userEntry);
-
-          io.to(groupId).emit(
-            'updateUserList',
-            Array.from(groupMap.values()).map((u) => u.user),
-          );
-        }
-
-        const existingTransaction = await Teamtransaction.findOne({
-          userId: highestAuction.userId,
-          teamID: team._id,
-          groupID: groupId,
-        });
-        if (!existingTransaction) {
-          await Teamtransaction.create({
-            userId: highestAuction.userId,
-            teamID: team._id,
-            groupID: groupId,
-            amount: highestAuction.amount,
-            status: 'sold',
-          });
-        }
-      }
-    } else {
-      const existingTransaction = await Teamtransaction.findOne({
-        teamID: team._id,
-        groupID: groupId,
-      });
-
-      if (!existingTransaction) {
-        await Teamtransaction.create({
-          teamID: team._id,
-          groupID: groupId,
-          status: 'unsold',
-        });
-      }
-    }
-
-    io.to(groupId).emit('teamStatusUpdate', {
-      message: `Team ${team.teamName} has been processed.`,
-    });
-
-    processInactiveTeams(groupId);
-  };
-
-  const processInactiveTeams = async (groupId) => {
-    const state = groupAuctionState.get(groupId) || {};
-    const pauseTime = new Date();
-    pauseTime.setMinutes(pauseTime.getMinutes() + (state.pauseduration || 0));
-
-    if (state.pauseAuction) {
-      const settingdata = await saveSetting({ pauseTime, pauseStatus: true });
-
-      io.to(groupId).emit('auctionpaused', {
-        message: `Auction is paused`,
-        settingdata,
-      });
-
-      state.pauseTimeout = setTimeout(
-        () => {
-          state.pauseAuction = false;
-          processInactiveTeams(groupId);
-        },
-        (state.pauseduration || 1) * 60 * 1000,
-      );
-
-      groupAuctionState.set(groupId, state);
-      return;
-    }
-
-    if (state.pauseTimeout) {
-      clearTimeout(state.pauseTimeout);
-      state.pauseTimeout = null;
-    }
-
-    await saveSetting({ pauseStatus: false });
-
-    const transactions = await Teamtransaction.find({
-      groupID: groupId,
-    }).lean();
-    const teamIDs = transactions.map((t) => t.teamID);
-
-    const query = teamIDs.length > 0 ? { _id: { $nin: teamIDs } } : {};
-    const team = await Team.findOne(query)
-      .sort({ randomNumber: 1 })
-      .select('_id teamName')
-      .lean();
-
-    if (!team) {
-      io.to(groupId).emit('teamStatusUpdate', { message: `No Team Found` });
-      return;
-    }
-
-    startCountdown(groupId, team, 20);
-  };
-
-  const saveSetting = async (data) => {
-    const setting = await Setting.findOne();
-    return await SettingModel.findByIdAndUpdate(setting._id, data, {
-      new: true,
-    });
-  };
+  // TODO: Auction functionality disabled - requires Group, Auction, Team, Teamtransaction models
+  // const startCountdown = (groupId, team, seconds) => { ... }
+  // const processBid = async (groupId, team) => { ... }
+  // const processInactiveTeams = async (groupId) => { ... }
+  // const saveSetting = async (data) => { ... }
+  //
+  // Enable these functions when the missing models are created
 
   cron.schedule('* * * * * *', async () => {
     try {
       const setting = await Setting.findOne();
       if (!setting) return;
 
-      const now = moment().tz('America/Los_Angeles');
-      const scheduled = moment(setting.auctionDate).tz('America/Los_Angeles');
-      const delay = scheduled.diff(now);
-
-      if (Math.abs(delay) <= 1000) {
-        const groups = await Group.find();
-        for (const group of groups) {
-          const groupId = group._id.toString();
-          if (!groupAuctionState.get(groupId)?.countdownTimer) {
-            processInactiveTeams(groupId);
-          }
-        }
-      }
+      // TODO: Auction functionality requires Group, Auction, Team, Teamtransaction models
+      // This cron job is disabled until those models are created
+      // const now = moment().tz('America/Los_Angeles');
+      // const scheduled = moment(setting.auctionDate).tz('America/Los_Angeles');
+      // const delay = scheduled.diff(now);
+      //
+      // if (Math.abs(delay) <= 1000) {
+      //   const groups = await Group.find();
+      //   for (const group of groups) {
+      //     const groupId = group._id.toString();
+      //     if (!groupAuctionState.get(groupId)?.countdownTimer) {
+      //       processInactiveTeams(groupId);
+      //     }
+      //   }
+      // }
     } catch (err) {
       console.error('Error in cron job:', err);
     }
