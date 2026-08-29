@@ -131,9 +131,13 @@ mongoose.connect(config.mongoose.url).then(() => {
       socket.userId = userId;
       socket.join(`user_${userId}`);
       // Set user online state in DB
-      User.findByIdAndUpdate(userId, { isOnline: true })
+      User.findByIdAndUpdate(userId, { isOnline: true }, { new: true })
         .exec()
-        .then(() => console.log(`User connected & marked online: ${userId}`))
+        .then((updatedUser) => {
+          const name = updatedUser ? updatedUser.fullName : userId;
+          const role = updatedUser ? updatedUser.role : 'unknown';
+          console.log(`[User Connection] User ${name} (${role}) connected & marked online: ${userId}`);
+        })
         .catch((err) => console.error(err));
       // Broadcast status changed to everyone
       io.emit('user_status_changed', { userId, isOnline: true });
@@ -157,9 +161,11 @@ mongoose.connect(config.mongoose.url).then(() => {
       socket.userId = connectedUserId;
       socket.join(`user_${connectedUserId}`);
       try {
-        await User.findByIdAndUpdate(connectedUserId, { isOnline: true });
+        const updatedUser = await User.findByIdAndUpdate(connectedUserId, { isOnline: true }, { new: true });
+        const name = updatedUser ? updatedUser.fullName : connectedUserId;
+        const role = updatedUser ? updatedUser.role : 'unknown';
         console.log(
-          `User connected (via event) & marked online: ${connectedUserId}`,
+          `[User Connection] User ${name} (${role}) connected (via event) & marked online: ${connectedUserId}`,
         );
         io.emit('user_status_changed', {
           userId: connectedUserId,
@@ -429,6 +435,7 @@ mongoose.connect(config.mongoose.url).then(() => {
             fileUrl: finalFileUrl,
             fileType: finalFileType,
           });
+          console.log(`[Chat Message] Chat message sent successfully in room ${roomId} from sender ${senderId}. Content: "${finalContent}", fileUrl: "${finalFileUrl || 'none'}"`);
 
           // Update the last message in the room
           await ChatRoom.findByIdAndUpdate(roomId, {
@@ -876,6 +883,7 @@ mongoose.connect(config.mongoose.url).then(() => {
                   fileUrl,
                   fileType: upload.fileType,
                 });
+                console.log(`[Media Upload] File uploaded successfully to S3 and message created: room=${upload.roomId}, fileUrl=${fileUrl}, type=${upload.fileType}`);
 
                 await ChatRoom.findByIdAndUpdate(upload.roomId, {
                   lastMessage: message._id,
