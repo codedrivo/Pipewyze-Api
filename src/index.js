@@ -32,6 +32,7 @@ const activeUploads = new Map();
 const MAX_UPLOAD_SIZE = 500 * 1024 * 1024; // 500 MB
 const ALLOWED_MIME_TYPES = [
   'image/jpeg',
+  'image/jpg',
   'image/png',
   'image/webp',
   'image/heic',
@@ -40,6 +41,7 @@ const ALLOWED_MIME_TYPES = [
   'video/mp4',
   'video/quicktime',
   'video/webm',
+  'application/octet-stream',
 ];
 
 function validateMagicBytes(filePath, fileType) {
@@ -51,31 +53,31 @@ function validateMagicBytes(filePath, fileType) {
 
     const hex = buffer.toString('hex').toUpperCase();
 
-    if (fileType === 'image/jpeg') {
-      return hex.startsWith('FFD8FF');
+    const isJpeg = hex.startsWith('FFD8FF');
+    const isPng = hex.startsWith('89504E470D0A1A0A');
+    const isGif = hex.startsWith('47494638');
+    const isWebp = hex.startsWith('52494646') && hex.slice(16, 24) === '57454250';
+    const isHeic = hex.slice(8, 16) === '66747970'; // Checks for 'ftyp'
+    const isMp4 = hex.slice(8, 16) === '66747970';
+    const isWebm = hex.startsWith('1A45DFA3');
+
+    // If it's a known image type, verify it's a valid image
+    if (fileType.startsWith('image/')) {
+      return isJpeg || isPng || isGif || isWebp || isHeic;
     }
-    if (fileType === 'image/png') {
-      return hex.startsWith('89504E470D0A1A0A');
+
+    // If it's a known video type, verify it's a valid video
+    if (fileType.startsWith('video/')) {
+      return isMp4 || isWebm || hex.slice(8, 16) === '6D6F6F76';
     }
-    if (fileType === 'image/webp') {
-      return hex.startsWith('52494646') && hex.slice(16, 24) === '57454250';
+
+    // If it's application/octet-stream, verify it's one of our supported formats
+    if (fileType === 'application/octet-stream') {
+      return isJpeg || isPng || isGif || isWebp || isHeic || isMp4 || isWebm;
     }
-    if (fileType === 'image/heic' || fileType === 'image/heif') {
-      return hex.slice(8, 16) === '66747970'; // Checks for 'ftyp' brand container signature
-    }
-    if (fileType === 'image/gif') {
-      return hex.startsWith('47494638'); // GIF8
-    }
-    if (fileType === 'video/mp4') {
-      return hex.slice(8, 16) === '66747970';
-    }
-    if (fileType === 'video/quicktime') {
-      return hex.slice(8, 16) === '66747970' || hex.slice(8, 16) === '6D6F6F76';
-    }
-    if (fileType === 'video/webm') {
-      return hex.startsWith('1A45DFA3');
-    }
-    return false;
+
+    // For any other file types, allow it
+    return true;
   } catch (err) {
     console.error('Magic bytes validation error:', err);
     return false;
@@ -387,9 +389,7 @@ mongoose.connect(config.mongoose.url).then(() => {
               }
             } else if (
               !fileUrl.startsWith('http://') &&
-              !fileUrl.startsWith('https://') &&
-              !fileUrl.startsWith('/') &&
-              !fileUrl.startsWith('file://')
+              !fileUrl.startsWith('https://')
             ) {
               const cleanBase64 = fileUrl.replace(/\s/g, '');
               if (/^[a-zA-Z0-9+/=]+$/.test(cleanBase64) && cleanBase64.length > 50) {
