@@ -34,6 +34,9 @@ const ALLOWED_MIME_TYPES = [
   'image/jpeg',
   'image/png',
   'image/webp',
+  'image/heic',
+  'image/heif',
+  'image/gif',
   'video/mp4',
   'video/quicktime',
   'video/webm',
@@ -56,6 +59,12 @@ function validateMagicBytes(filePath, fileType) {
     }
     if (fileType === 'image/webp') {
       return hex.startsWith('52494646') && hex.slice(16, 24) === '57454250';
+    }
+    if (fileType === 'image/heic' || fileType === 'image/heif') {
+      return hex.slice(8, 16) === '66747970'; // Checks for 'ftyp' brand container signature
+    }
+    if (fileType === 'image/gif') {
+      return hex.startsWith('47494638'); // GIF8
     }
     if (fileType === 'video/mp4') {
       return hex.slice(8, 16) === '66747970';
@@ -364,17 +373,55 @@ mongoose.connect(config.mongoose.url).then(() => {
           let finalContent = content;
           let finalFileType = fileType;
 
-          if (fileUrl && fileUrl.startsWith('data:')) {
-            const matches = fileUrl.match(/^data:([^;]+);base64,([\s\S]+)$/);
-            if (matches && matches.length === 3) {
-              const mimeType = matches[1];
-              const base64Data = matches[2];
-              const buffer = Buffer.from(base64Data, 'base64');
+          if (fileUrl) {
+            let isBase64 = false;
+            let mimeType = null;
+            let buffer = null;
 
+            if (fileUrl.startsWith('data:')) {
+              const matches = fileUrl.match(/^data:([^;]+);base64,([\s\S]+)$/);
+              if (matches && matches.length === 3) {
+                isBase64 = true;
+                mimeType = matches[1];
+                buffer = Buffer.from(matches[2], 'base64');
+              }
+            } else if (
+              !fileUrl.startsWith('http://') &&
+              !fileUrl.startsWith('https://') &&
+              !fileUrl.startsWith('/') &&
+              !fileUrl.startsWith('file://')
+            ) {
+              const cleanBase64 = fileUrl.replace(/\s/g, '');
+              if (/^[a-zA-Z0-9+/=]+$/.test(cleanBase64) && cleanBase64.length > 50) {
+                try {
+                  buffer = Buffer.from(cleanBase64, 'base64');
+                  isBase64 = true;
+
+                  const hex = buffer.slice(0, 8).toString('hex').toUpperCase();
+                  if (hex.startsWith('FFD8FF')) {
+                    mimeType = 'image/jpeg';
+                  } else if (hex.startsWith('89504E470D0A1A0A')) {
+                    mimeType = 'image/png';
+                  } else if (hex.startsWith('47494638')) {
+                    mimeType = 'image/gif';
+                  } else if (hex.startsWith('52494646') && buffer.slice(8, 12).toString('ascii') === 'WEBP') {
+                    mimeType = 'image/webp';
+                  } else if (buffer.slice(4, 8).toString('ascii') === 'ftyp') {
+                    mimeType = 'video/mp4';
+                  } else if (hex.startsWith('1A45DFA3')) {
+                    mimeType = 'video/webm';
+                  } else {
+                    mimeType = fileType || 'image/jpeg';
+                  }
+                } catch (e) {
+                  console.error('Failed to parse raw base64 buffer:', e.message);
+                }
+              }
+            }
+
+            if (isBase64 && buffer) {
               const extension = mimeType.split('/').pop() || 'bin';
-              const s3Folder = mimeType.startsWith('image/')
-                ? 'images'
-                : 'videos';
+              const s3Folder = mimeType.startsWith('image/') ? 'images' : 'videos';
               const uniqueKey = `PipeWyze/${s3Folder}/${crypto.randomUUID()}.${extension}`;
 
               const command = new PutObjectCommand({
@@ -396,7 +443,7 @@ mongoose.connect(config.mongoose.url).then(() => {
             }
           }
 
-          if (!finalFileType && finalFileUrl) {
+          if (!finalFileType && finalFileUrl && !finalFileUrl.startsWith('data:') && (finalFileUrl.startsWith('http://') || finalFileUrl.startsWith('https://') || finalFileUrl.startsWith('/'))) {
             const cleanUrl = finalFileUrl.split('?')[0];
             const ext = cleanUrl.substring(cleanUrl.lastIndexOf('.') + 1).toLowerCase();
             if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'heic'].includes(ext)) {
