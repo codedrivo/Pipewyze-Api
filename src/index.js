@@ -362,6 +362,7 @@ mongoose.connect(config.mongoose.url).then(() => {
 
           let finalFileUrl = fileUrl;
           let finalContent = content;
+          let finalFileType = fileType;
 
           if (fileUrl && fileUrl.startsWith('data:')) {
             const matches = fileUrl.match(/^data:([^;]+);base64,([\s\S]+)$/);
@@ -391,6 +392,17 @@ mongoose.connect(config.mongoose.url).then(() => {
               } else {
                 finalFileUrl = `https://${config.s3.S3_BUCKET_PATH}.s3.${config.s3.region}.amazonaws.com/${uniqueKey}`;
               }
+              finalFileType = mimeType;
+            }
+          }
+
+          if (!finalFileType && finalFileUrl) {
+            const cleanUrl = finalFileUrl.split('?')[0];
+            const ext = cleanUrl.substring(cleanUrl.lastIndexOf('.') + 1).toLowerCase();
+            if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'heic'].includes(ext)) {
+              finalFileType = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+            } else if (['mp4', 'mov', 'quicktime', 'webm', 'm4v', '3gp'].includes(ext)) {
+              finalFileType = `video/${ext === 'mov' || ext === 'quicktime' ? 'quicktime' : ext}`;
             }
           }
 
@@ -415,7 +427,7 @@ mongoose.connect(config.mongoose.url).then(() => {
             senderId,
             content: finalContent,
             fileUrl: finalFileUrl,
-            fileType,
+            fileType: finalFileType,
           });
 
           // Update the last message in the room
