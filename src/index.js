@@ -107,7 +107,7 @@ mongoose.connect(config.mongoose.url).then(() => {
 
   io = socketIo(socketApp, {
     cors: { origin: '*', methods: ['GET', 'POST'] },
-    maxHttpBufferSize: 5 * 1024 * 1024, // 5MB max message size for chunks
+    maxHttpBufferSize: 100 * 1024 * 1024, // 100MB max message size for large gallery files/chunks
   });
   global.io = io;
 
