@@ -206,13 +206,7 @@ mongoose.connect(config.mongoose.url).then(() => {
 
       try {
         if (activeUserId) {
-          // Set user online state in DB and broadcast status
-          await User.findByIdAndUpdate(activeUserId, { isOnline: true });
-          console.log(`User joined room & marked online: ${activeUserId}`);
-          io.emit('user_status_changed', {
-            userId: activeUserId,
-            isOnline: true,
-          });
+          console.log(`User ${activeUserId} joined room: ${roomId}`);
 
           // Mark existing messages sent by counterpart as read
           await Message.updateMany(
