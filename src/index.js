@@ -131,9 +131,13 @@ mongoose.connect(config.mongoose.url).then(() => {
       socket.userId = userId;
       socket.join(`user_${userId}`);
       // Set user online state in DB
-      User.findByIdAndUpdate(userId, { isOnline: true })
+      User.findByIdAndUpdate(userId, { isOnline: true }, { new: true })
         .exec()
-        .then(() => console.log(`User connected & marked online: ${userId}`))
+        .then((updatedUser) => {
+          const name = updatedUser ? updatedUser.fullName : userId;
+          const role = updatedUser ? updatedUser.role : 'unknown';
+          console.log(`[User Connection] User ${name} (${role}) connected & marked online: ${userId}`);
+        })
         .catch((err) => console.error(err));
       // Broadcast status changed to everyone
       io.emit('user_status_changed', { userId, isOnline: true });
@@ -157,9 +161,11 @@ mongoose.connect(config.mongoose.url).then(() => {
       socket.userId = connectedUserId;
       socket.join(`user_${connectedUserId}`);
       try {
-        await User.findByIdAndUpdate(connectedUserId, { isOnline: true });
+        const updatedUser = await User.findByIdAndUpdate(connectedUserId, { isOnline: true }, { new: true });
+        const name = updatedUser ? updatedUser.fullName : connectedUserId;
+        const role = updatedUser ? updatedUser.role : 'unknown';
         console.log(
-          `User connected (via event) & marked online: ${connectedUserId}`,
+          `[User Connection] User ${name} (${role}) connected (via event) & marked online: ${connectedUserId}`,
         );
         io.emit('user_status_changed', {
           userId: connectedUserId,
@@ -356,6 +362,7 @@ mongoose.connect(config.mongoose.url).then(() => {
 
           let finalFileUrl = fileUrl;
           let finalContent = content;
+          let finalFileType = fileType;
 
           if (fileUrl && fileUrl.startsWith('data:')) {
             const matches = fileUrl.match(/^data:([^;]+);base64,([\s\S]+)$/);
@@ -385,6 +392,17 @@ mongoose.connect(config.mongoose.url).then(() => {
               } else {
                 finalFileUrl = `https://${config.s3.S3_BUCKET_PATH}.s3.${config.s3.region}.amazonaws.com/${uniqueKey}`;
               }
+              finalFileType = mimeType;
+            }
+          }
+
+          if (!finalFileType && finalFileUrl) {
+            const cleanUrl = finalFileUrl.split('?')[0];
+            const ext = cleanUrl.substring(cleanUrl.lastIndexOf('.') + 1).toLowerCase();
+            if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'heic'].includes(ext)) {
+              finalFileType = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+            } else if (['mp4', 'mov', 'quicktime', 'webm', 'm4v', '3gp'].includes(ext)) {
+              finalFileType = `video/${ext === 'mov' || ext === 'quicktime' ? 'quicktime' : ext}`;
             }
           }
 
@@ -409,8 +427,9 @@ mongoose.connect(config.mongoose.url).then(() => {
             senderId,
             content: finalContent,
             fileUrl: finalFileUrl,
-            fileType,
+            fileType: finalFileType,
           });
+          console.log(`[Chat Message] Chat message sent successfully in room ${roomId} from sender ${senderId}. Content: "${finalContent}", fileUrl: "${finalFileUrl || 'none'}"`);
 
           // Update the last message in the room
           await ChatRoom.findByIdAndUpdate(roomId, {
@@ -432,7 +451,17 @@ mongoose.connect(config.mongoose.url).then(() => {
               ? room.plumberId
               : room.homeOwnerId;
 
+          // Also emit new_message to counterpart's user room in case they are not in the active chat room socket
+          io.to(`user_${counterpartId.toString()}`).emit('new_message', populatedMessage);
+
           const senderName = senderUser ? senderUser.fullName : 'Someone';
+
+          // Emit chat_notification for in-app toast/banner alerts when outside the chat route
+          io.to(`user_${counterpartId.toString()}`).emit('chat_notification', {
+            roomId,
+            senderName,
+            message: populatedMessage,
+          });
 
           notificationService
             .sendToUsers(
@@ -848,6 +877,7 @@ mongoose.connect(config.mongoose.url).then(() => {
                   fileUrl,
                   fileType: upload.fileType,
                 });
+                console.log(`[Media Upload] File uploaded successfully to S3 and message created: room=${upload.roomId}, fileUrl=${fileUrl}, type=${upload.fileType}`);
 
                 await ChatRoom.findByIdAndUpdate(upload.roomId, {
                   lastMessage: message._id,
@@ -871,10 +901,20 @@ mongoose.connect(config.mongoose.url).then(() => {
                       ? room.plumberId
                       : room.homeOwnerId;
 
+                  // Also emit new_message to counterpart's user room
+                  io.to(`user_${counterpartId.toString()}`).emit('new_message', populatedMessage);
+
                   const senderUser = await User.findById(upload.senderId);
                   const senderName = senderUser
                     ? senderUser.fullName
                     : 'Someone';
+
+                  // Emit chat_notification for in-app toast/banner alerts when outside the chat route
+                  io.to(`user_${counterpartId.toString()}`).emit('chat_notification', {
+                    roomId: upload.roomId.toString(),
+                    senderName,
+                    message: populatedMessage,
+                  });
 
                   notificationService
                     .sendToUsers(
@@ -1159,6 +1199,36 @@ mongoose.connect(config.mongoose.url).then(() => {
               fileType: fileType || '',
               fileName: fileName || '',
             });
+
+            // Send push notification for AI response
+            notificationService
+              .sendToUsers(
+                [activeUserId.toString()],
+                'AI Assistant Response',
+                aiMessage,
+                {
+                  type: 'ai_chat',
+                  isAiChat: 'true',
+                },
+              )
+              .catch((err) =>
+                console.error('Failed sending AI chat notification:', err.message),
+              );
+
+            // Emit chat_notification for in-app toast/banner alerts when outside the chat route
+            io.to(`user_${activeUserId.toString()}`).emit('chat_notification', {
+              roomId: 'ai',
+              senderName: 'AI Assistant',
+              message: {
+                sender: 'ai',
+                message: aiMessage,
+                suggestedVideo,
+                fileUrl: finalFileUrl || '',
+                fileType: fileType || '',
+                fileName: fileName || '',
+                createdAt: new Date(),
+              },
+            });
             return;
           }
 
@@ -1327,7 +1397,7 @@ For general conversation or greetings, you MUST set "youtubeUrl" to null.
             fileName: fileName || '',
           });
 
-          // Send successful response to frontend
+           // Send successful response to frontend
           socket.emit('ai_response', {
             sender: 'ai',
             message: aiMessage,
@@ -1335,6 +1405,36 @@ For general conversation or greetings, you MUST set "youtubeUrl" to null.
             fileUrl: finalFileUrl || '',
             fileType: fileType || '',
             fileName: fileName || '',
+          });
+
+          // Send push notification for AI response
+          notificationService
+            .sendToUsers(
+              [activeUserId.toString()],
+              'AI Assistant Response',
+              aiMessage,
+              {
+                type: 'ai_chat',
+                isAiChat: 'true',
+              },
+            )
+            .catch((err) =>
+              console.error('Failed sending AI chat notification:', err.message),
+            );
+
+          // Emit chat_notification for in-app toast/banner alerts when outside the chat route
+          io.to(`user_${activeUserId.toString()}`).emit('chat_notification', {
+            roomId: 'ai',
+            senderName: 'AI Assistant',
+            message: {
+              sender: 'ai',
+              message: aiMessage,
+              suggestedVideo,
+              fileUrl: finalFileUrl || '',
+              fileType: fileType || '',
+              fileName: fileName || '',
+              createdAt: new Date(),
+            },
           });
         } catch (err) {
           // ERROR HANDLING
