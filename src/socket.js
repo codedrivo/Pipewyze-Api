@@ -90,7 +90,7 @@ const io = require('socket.io')(http, {
     origin: '*',
     methods: ['GET', 'POST'],
   },
-  maxHttpBufferSize: 5 * 1024 * 1024, // 5MB max message size for chunks
+  maxHttpBufferSize: 100 * 1024 * 1024, // 100MB max message size for large gallery files/chunks
 });
 global.io = io;
 app.use(express.static(__dirname));
