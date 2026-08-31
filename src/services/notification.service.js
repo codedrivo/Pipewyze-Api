@@ -102,6 +102,7 @@ const sendToTokens = async (userId, tokens, title, body, data = {}) => {
  */
 const sendToUsers = async (userIds, title, body, data = {}) => {
   try {
+    console.log('[FCM TARGET USERS]', userIds);
     const users = await User.find({ _id: { $in: userIds } });
     const promises = users.map(async (user) => {
       // Save notification to DB
@@ -131,6 +132,7 @@ const sendToUsers = async (userIds, title, body, data = {}) => {
       }
 
       if (user.fcmTokens && user.fcmTokens.length > 0) {
+        console.log('[FCM TARGET TOKENS]', user.fcmTokens);
         return sendToTokens(
           user._id.toString(),
           user.fcmTokens,

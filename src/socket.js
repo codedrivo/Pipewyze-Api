@@ -335,22 +335,29 @@ io.on('connection', async (socket) => {
 
   socket.on('send_message', async ({ roomId, senderId, receiverId, content, fileUrl, fileType, fileName }) => {
   try {
-    if (!roomId || !senderId || (!content && !fileUrl)) {
+    const actualSenderId = socket.userId || senderId;
+    
+    if (!roomId || !actualSenderId || (!content && !fileUrl)) {
       socket.emit('chat_error', { message: 'Missing roomId, senderId, or content/file.' });
       return;
     }
 
-    const senderUser = await User.findById(senderId);
+    const senderUser = await User.findById(actualSenderId);
     if (!senderUser) {
       socket.emit('chat_error', { message: 'Sender not found.' });
       return;
     }
 
     let room = await ChatRoom.findById(roomId);
-    if (!room && receiverId) {
+    if (room) {
+      if (room.homeOwnerId.toString() !== actualSenderId.toString() && room.plumberId.toString() !== actualSenderId.toString()) {
+        socket.emit('chat_error', { message: 'You are not authorized to send messages in this room.' });
+        return;
+      }
+    } else if (receiverId) {
       const sRole = senderUser.role;
-      const homeOwnerId = sRole === 'licensed-plumber' ? receiverId : senderId;
-      const plumberId = sRole === 'licensed-plumber' ? senderId : receiverId;
+      const homeOwnerId = sRole === 'licensed-plumber' ? receiverId : actualSenderId;
+      const plumberId = sRole === 'licensed-plumber' ? actualSenderId : receiverId;
 
       room = await ChatRoom.create({ _id: roomId, homeOwnerId, plumberId });
       const sockets = await io.fetchSockets();
@@ -418,7 +425,7 @@ io.on('connection', async (socket) => {
     // 4. Create single message entry
     const message = await Message.create({
       roomId,
-      senderId,
+      senderId: actualSenderId,
       content: finalContent || (isVideo ? 'Video' : 'Photo'),
       fileUrl: finalFileUrl,
       fileType: finalFileType,
@@ -434,25 +441,34 @@ io.on('connection', async (socket) => {
 
     if (room) {
       const counterpartId =
-        room.homeOwnerId.toString() === senderId.toString()
+        room.homeOwnerId.toString() === actualSenderId.toString()
           ? room.plumberId.toString()
           : room.homeOwnerId.toString();
 
       io.to(`user_${counterpartId}`).emit('new_message', populatedMessage);
-      io.to(`user_${counterpartId}`).emit('chat_notification', {
-        roomId,
-        senderName: senderUser.fullName || 'Someone',
-        message: populatedMessage,
-      });
+      
+      if (counterpartId.toString() !== actualSenderId.toString()) {
+        console.log('[CHAT NOTIFICATION]', {
+          senderId: actualSenderId,
+          receiverId: counterpartId,
+          roomId,
+        });
 
-      notificationService
-        .sendToUsers(
-          [counterpartId],
-          `New message from ${senderUser.fullName || 'Someone'}`,
-          finalContent || (isVideo ? 'Sent a video' : 'Sent a photo'),
-          { roomId: roomId.toString(), messageId: message._id.toString() },
-        )
-        .catch((err) => console.error('[Push Notification Error]:', err.message));
+        io.to(`user_${counterpartId}`).emit('chat_notification', {
+          roomId,
+          senderName: senderUser.fullName || 'Someone',
+          message: populatedMessage,
+        });
+
+        notificationService
+          .sendToUsers(
+            [counterpartId],
+            `New message from ${senderUser.fullName || 'Someone'}`,
+            finalContent || (isVideo ? 'Sent a video' : 'Sent a photo'),
+            { roomId: roomId.toString(), messageId: message._id.toString() },
+          )
+          .catch((err) => console.error('[Push Notification Error]:', err.message));
+      }
     }
   } catch (error) {
     console.error('[send_message Error]:', error.message);
