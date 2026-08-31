@@ -437,7 +437,7 @@ io.on('connection', async (socket) => {
 
     const populatedMessage = await message.populate('senderId', 'fullName profileimageurl');
     // Use socket.to instead of io.to so the sender doesn't receive the event
-    socket.to(roomId).emit('new_message', populatedMessage);
+    socket.to(roomId).emit('new_message', populatedMessage.toJSON());
 
     if (room) {
       const counterpartId =
@@ -445,15 +445,7 @@ io.on('connection', async (socket) => {
           ? room.plumberId.toString()
           : room.homeOwnerId.toString();
 
-      io.to(`user_${counterpartId}`).emit('new_message', populatedMessage);
-      
       if (counterpartId.toString() !== actualSenderId.toString()) {
-        console.log('[CHAT NOTIFICATION]', {
-          senderId: actualSenderId,
-          receiverId: counterpartId,
-          roomId,
-        });
-
         io.to(`user_${counterpartId}`).emit('chat_notification', {
           roomId,
           senderName: senderUser.fullName || 'Someone',
