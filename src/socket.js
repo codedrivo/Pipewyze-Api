@@ -46,6 +46,8 @@ function validateMagicBytes(filePath, fileType) {
     fs.closeSync(fd);
 
     const hex = buffer.toString('hex').toUpperCase();
+    const ascii = buffer.toString('ascii');
+    console.log(`[DEBUG] validateMagicBytes - fileType: ${fileType}, hex: ${hex}, ascii: ${ascii.replace(/\n|\r/g, '')}`);
 
     const isJpeg = hex.startsWith('FFD8FF');
     const isPng = hex.startsWith('89504E470D0A1A0A');
@@ -380,6 +382,9 @@ io.on('connection', async (socket) => {
                 isBase64 = true;
 
                 const hex = buffer.slice(0, 8).toString('hex').toUpperCase();
+                const ascii = buffer.slice(0, 8).toString('ascii');
+                console.log(`[DEBUG] Base64 Parse - expected fileType: ${fileType}, hex: ${hex}, ascii: ${ascii.replace(/\n|\r/g, '')}`);
+                
                 if (hex.startsWith('FFD8FF')) {
                   mimeType = 'image/jpeg';
                 } else if (hex.startsWith('89504E470D0A1A0A')) {
