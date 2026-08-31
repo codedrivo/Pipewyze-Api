@@ -124,10 +124,7 @@ const getMyChatRooms = catchAsync(async (req, res) => {
             fileType: room.lastMessage.fileType || null,
             senderId: room.lastMessage.senderId,
             createdAt: room.lastMessage.createdAt,
-            read:
-              room.lastMessage.senderId.toString() === userId.toString()
-                ? room.lastMessage.read || false
-                : true,
+            read: room.lastMessage.read || false,
           };
         })(),
       };
@@ -180,10 +177,10 @@ const getRoomMessages = catchAsync(async (req, res) => {
   }
 
   // Mark counterpart's messages in this room as read
-  // await Message.updateMany(
-  //   { roomId, senderId: { $ne: req.user._id }, read: false },
-  //   { $set: { read: true } },
-  // );
+  await Message.updateMany(
+    { roomId, senderId: { $ne: req.user._id }, read: false },
+    { $set: { read: true } },
+  );
 
   const messages = await Message.find({ roomId })
     .sort({ createdAt: 1 })
