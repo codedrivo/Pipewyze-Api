@@ -156,7 +156,6 @@ io.on('connection', async (socket) => {
       socket.emit('chat_error', { message: 'roomId is required' });
       return;
     }
-    socket.join(roomId);
     const activeUserId = (payloadUserId || socket.userId || userId || '').toString();
 
     if (activeUserId) {
@@ -164,6 +163,21 @@ io.on('connection', async (socket) => {
       socket.join(`user_${activeUserId}`);
 
       try {
+        const room = await ChatRoom.findById(roomId);
+        if (!room) {
+          socket.emit('chat_error', { message: 'Chat room not found.' });
+          return;
+        }
+
+        // Restrict room access to only the homeowner and plumber
+        if (room.homeOwnerId.toString() !== activeUserId && room.plumberId.toString() !== activeUserId) {
+          socket.emit('chat_error', { message: 'You are not authorized to join this room.' });
+          return;
+        }
+
+        // If authorized, join the socket room
+        socket.join(roomId);
+
         await Message.updateMany(
           { roomId, senderId: { $ne: activeUserId }, read: false },
           { $set: { read: true } },
@@ -176,7 +190,6 @@ io.on('connection', async (socket) => {
 
         socket.emit('message_history', messages);
 
-        const room = await ChatRoom.findById(roomId);
         if (room) {
           const counterpartId =
             room.homeOwnerId.toString() === activeUserId
@@ -341,7 +354,11 @@ io.on('connection', async (socket) => {
 
       room = await ChatRoom.create({ _id: roomId, homeOwnerId, plumberId });
       const sockets = await io.fetchSockets();
-      sockets.forEach((s) => s.join(roomId));
+      sockets.forEach((s) => {
+        if (s.userId === homeOwnerId.toString() || s.userId === plumberId.toString()) {
+          s.join(roomId);
+        }
+      });
     }
 
     socket.join(roomId);
@@ -412,7 +429,8 @@ io.on('connection', async (socket) => {
     }
 
     const populatedMessage = await message.populate('senderId', 'fullName profileimageurl');
-    io.to(roomId).emit('new_message', populatedMessage);
+    // Use socket.to instead of io.to so the sender doesn't receive the event
+    socket.to(roomId).emit('new_message', populatedMessage);
 
     if (room) {
       const counterpartId =
