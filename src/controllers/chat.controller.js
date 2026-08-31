@@ -74,13 +74,13 @@ const getMyChatRooms = catchAsync(async (req, res) => {
     .skip(skip)
     .limit(limit);
 
-  if (roomsList.length > 0) {
-    const roomIds = roomsList.map((room) => room._id);
-    await Message.updateMany(
-      { roomId: { $in: roomIds }, senderId: { $ne: userId }, read: false },
-      { $set: { read: true } },
-    );
-  }
+  // if (roomsList.length > 0) {
+  //   const roomIds = roomsList.map((room) => room._id);
+  //   await Message.updateMany(
+  //     { roomId: { $in: roomIds }, senderId: { $ne: userId }, read: false },
+  //     { $set: { read: true } },
+  //   );
+  // }
 
   const formattedRooms = roomsList
     .map((room) => {
@@ -180,10 +180,10 @@ const getRoomMessages = catchAsync(async (req, res) => {
   }
 
   // Mark counterpart's messages in this room as read
-  await Message.updateMany(
-    { roomId, senderId: { $ne: req.user._id }, read: false },
-    { $set: { read: true } },
-  );
+  // await Message.updateMany(
+  //   { roomId, senderId: { $ne: req.user._id }, read: false },
+  //   { $set: { read: true } },
+  // );
 
   const messages = await Message.find({ roomId })
     .sort({ createdAt: 1 })
