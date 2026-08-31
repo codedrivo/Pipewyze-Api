@@ -178,12 +178,6 @@ io.on('connection', async (socket) => {
         // If authorized, join the socket room
         socket.join(roomId);
 
-        await Message.updateMany(
-          { roomId, senderId: { $ne: activeUserId }, read: false },
-          { $set: { read: true } },
-        );
-        socket.to(roomId).emit('messages_read', { roomId, readerId: activeUserId });
-
         const messages = await Message.find({ roomId })
           .populate('senderId', 'fullName profileimageurl')
           .sort({ createdAt: 1 });
