@@ -85,24 +85,21 @@ async function searchAiVideo(searchQuery, userRole) {
   if (!searchQuery) return null;
   try {
     const queryWords = searchQuery.split(/\s+/);
-    const regexPatterns = queryWords.map((word) => new RegExp(word, 'i'));
+    const regexConditions = queryWords.flatMap((word) => [
+      { title: { $regex: word, $options: 'i' } },
+      { description: { $regex: word, $options: 'i' } },
+    ]);
 
     // Try finding for specific role first
     let matchedVideo = await AiVideo.findOne({
-      $or: [
-        { title: { $in: regexPatterns } },
-        { description: { $in: regexPatterns } },
-      ],
+      $or: regexConditions,
       targetAudience: userRole,
     }).lean();
 
     // If not found, broaden search to any audience
     if (!matchedVideo) {
       matchedVideo = await AiVideo.findOne({
-        $or: [
-          { title: { $in: regexPatterns } },
-          { description: { $in: regexPatterns } },
-        ],
+        $or: regexConditions,
       }).lean();
     }
 
@@ -167,7 +164,7 @@ async function searchYouTubeVideo(searchQuery) {
   return null;
 }
 
-async function generateAIAnswer(question, isWorkRelated) {
+async function generateAIAnswer(question, isWorkRelated, mediaContext = null) {
   const apiKey = process.env.OPENAI_API_KEY;
 
   if (!apiKey) {
@@ -180,9 +177,28 @@ async function generateAIAnswer(question, isWorkRelated) {
   }
 
   try {
-    const systemPrompt = isWorkRelated
+    let systemPrompt = isWorkRelated
       ? 'You are a helpful plumbing assistant. Provide a brief, direct answer to the plumbing question. If you are showing a video tutorial, mention it briefly.'
       : "You are a helpful assistant. Provide a brief, direct answer to the user's general question.";
+
+    let userContent = question || '';
+    if (mediaContext) {
+      if (mediaContext === 'image') {
+        systemPrompt =
+          'You are a helpful plumbing assistant. Analyze this plumbing-related image and explain what you can identify. If the image does not contain enough information, clearly say what additional information is needed. ' +
+          systemPrompt;
+        userContent = question
+          ? `[User uploaded an image]: ${question}`
+          : '[User uploaded an image with no text description]';
+      } else if (mediaContext === 'video') {
+        systemPrompt =
+          'You are a helpful plumbing assistant. Analyze the uploaded plumbing video and explain what you can identify. If the video cannot be analyzed directly, clearly state the limitation. ' +
+          systemPrompt;
+        userContent = question
+          ? `[User uploaded a video]: ${question}`
+          : '[User uploaded a video with no text description]';
+      }
+    }
 
     const response = await axios.post(
       'https://api.openai.com/v1/chat/completions',
@@ -190,7 +206,7 @@ async function generateAIAnswer(question, isWorkRelated) {
         model: 'gpt-3.5-turbo',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: question },
+          { role: 'user', content: userContent },
         ],
         max_tokens: 150,
       },

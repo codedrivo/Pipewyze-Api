@@ -1011,13 +1011,15 @@ io.on('connection', async (socket) => {
   // Ask AI
   socket.on('ask_ai', async ({ message, fileUrl, fileType, fileName }) => {
     try {
+      console.log(`\n========== AI SOCKET: ASK AI ==========`);
+      console.log(`[AI] Socket ID: ${socket.id}`);
+      console.log(`[AI] User UID: ${uid}`);
+
       if ((!message || !message.trim()) && !fileUrl) {
         return socket.emit('ai_error', {
           message: 'Please enter a question or upload a file.',
         });
       }
-
-      console.log('[AI] User:', uid);
 
       const user = await User.findById(uid, 'role').lean();
       if (!user) {
@@ -1029,13 +1031,23 @@ io.on('connection', async (socket) => {
       let finalFileUrl = fileUrl || '';
       let finalFileType = fileType || '';
 
+      console.log(`[AI] Incoming Message: ${message || '(none)'}`);
+      console.log(`[AI] File URL received: ${fileUrl ? 'Yes' : 'No'}`);
+      console.log(`[AI] File Type: ${fileType || 'None'}`);
+      console.log(`[AI] File Name: ${fileName || 'None'}`);
+
       if (fileUrl && !fileUrl.startsWith('http')) {
         try {
+          console.log('[AI] Base64 S3 upload started...');
           const uploadResult = await uploadBase64ToS3(fileUrl, fileType);
           finalFileUrl = uploadResult.fileUrl;
           finalFileType = uploadResult.fileType;
+          console.log('[AI] S3 upload completed:', finalFileUrl);
         } catch (e) {
           console.error('[AI Base64 Upload Error]:', e.message);
+          return socket.emit('ai_error', {
+            message: 'Failed to upload media file to server.',
+          });
         }
       }
 
@@ -1045,12 +1057,10 @@ io.on('connection', async (socket) => {
           finalFileUrl || fileName || '',
         );
 
-      const cleanMessage = message
-        ? message.trim()
-        : isVideo
-        ? 'Video'
-        : 'Photo';
-      console.log('[AI] Question:', cleanMessage);
+      const cleanMessage = message ? message.trim() : '';
+      const mediaContext = isVideo ? 'video' : finalFileUrl ? 'image' : null;
+
+      console.log('[AI] Final Question Text:', cleanMessage || '(Media only)');
 
       // Determine if question is work-related
       const { isWorkRelated, searchQuery } =
@@ -1079,9 +1089,12 @@ io.on('connection', async (socket) => {
       }
 
       // Generate AI Answer
+      // Generate AI Answer
+      console.log('[AI] Generating AI answer...');
       aiMessage = await aiAssistant.generateAIAnswer(
         cleanMessage,
         isWorkRelated,
+        mediaContext,
       );
       console.log('[AI] Final response generated.');
 
@@ -1094,22 +1107,38 @@ io.on('connection', async (socket) => {
         fileName: fileName || '',
       };
 
-      await AiChat.create({
-        userId: uid,
-        message: cleanMessage,
-        response: aiMessage,
-        suggestedVideo,
-        fileUrl: finalFileUrl,
-        fileType: finalFileType,
-        fileName: fileName || '',
-      });
+      try {
+        console.log('[AI] Saving AiChat to database...');
+        await AiChat.create({
+          userId: uid,
+          message: cleanMessage || (isVideo ? 'Video' : 'Photo'),
+          response: aiMessage,
+          suggestedVideo,
+          fileUrl: finalFileUrl,
+          fileType: finalFileType,
+          fileName: fileName || '',
+        });
+      } catch (dbErr) {
+        console.error('[AI] AiChat save error (non-fatal):', dbErr.message);
+      }
 
-      socket.emit('ai_response', responsePayload);
+      console.log(`[AI] Checking socket connected status...`);
+      if (!socket.connected) {
+        console.warn(
+          `[AI] WARNING: Socket disconnected before response. socket.id=${socket.id}`,
+        );
+      } else {
+        console.log(`[AI] Emitting ai_response back to socket ${socket.id}...`);
+        socket.emit('ai_response', responsePayload);
+      }
+      console.log(`========== AI SOCKET: FINISHED ==========\n`);
     } catch (err) {
       console.error('[ask_ai Error]:', err.message);
-      socket.emit('ai_error', {
-        message: 'Failed to process AI assistant request.',
-      });
+      if (socket.connected) {
+        socket.emit('ai_error', {
+          message: 'Failed to process AI assistant request.',
+        });
+      }
     }
   });
 
