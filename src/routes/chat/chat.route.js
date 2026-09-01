@@ -4,11 +4,7 @@ const auth = require('../../middlewares/auth.middleware');
 const upload = require('../../middlewares/multer.middleware');
 
 router.post('/rooms', auth('home-owner'), chatController.initChatRoom);
-router.get(
-  '/unread-counts',
-  auth(['home-owner', 'licensed-plumber', 'admin']),
-  chatController.getUnreadCounts,
-);
+
 router.get(
   '/rooms',
   auth(['home-owner', 'licensed-plumber', 'admin']),
