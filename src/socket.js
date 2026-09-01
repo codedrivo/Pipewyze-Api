@@ -1062,18 +1062,28 @@ io.on('connection', async (socket) => {
 
       console.log('[AI] Final Question Text:', cleanMessage || '(Media only)');
 
-      // Determine if question is work-related
+      // Determine if question is work-related or media upload
       const { isWorkRelated, searchQuery } =
         aiAssistant.isWorkRelatedQuestion(cleanMessage);
-      console.log('[AI] Work related:', isWorkRelated);
+
+      const effectiveIsWorkRelated = isWorkRelated || !!mediaContext;
+      const effectiveSearchQuery =
+        searchQuery ||
+        (mediaContext === 'image'
+          ? 'pipe leak repair'
+          : mediaContext === 'video'
+          ? 'plumbing repair tutorial'
+          : '');
+
+      console.log('[AI] Work related:', effectiveIsWorkRelated);
 
       let suggestedVideo = null;
       let aiMessage = '';
 
-      if (isWorkRelated) {
-        console.log('[AI] Searching AiVideo for query:', searchQuery);
+      if (effectiveIsWorkRelated) {
+        console.log('[AI] Searching AiVideo for query:', effectiveSearchQuery);
         suggestedVideo = await aiAssistant.searchAiVideo(
-          searchQuery,
+          effectiveSearchQuery,
           user.role,
         );
 
@@ -1081,7 +1091,9 @@ io.on('connection', async (socket) => {
           console.log('[AI] AiVideo found:', suggestedVideo.title);
         } else {
           console.log('[AI] Searching YouTube...');
-          suggestedVideo = await aiAssistant.searchYouTubeVideo(searchQuery);
+          suggestedVideo = await aiAssistant.searchYouTubeVideo(
+            effectiveSearchQuery,
+          );
           if (suggestedVideo) {
             console.log('[AI] YouTube video found:', suggestedVideo.title);
           }
@@ -1092,7 +1104,7 @@ io.on('connection', async (socket) => {
       console.log('[AI] Generating AI answer...');
       aiMessage = await aiAssistant.generateAIAnswer(
         cleanMessage,
-        isWorkRelated,
+        effectiveIsWorkRelated,
         mediaContext,
         finalFileUrl,
       );
