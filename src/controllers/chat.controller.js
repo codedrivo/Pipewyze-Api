@@ -3,6 +3,7 @@ const ApiError = require('../helpers/apiErrorConverter');
 const ChatRoom = require('../models/chatRoom.model');
 const Message = require('../models/message.model');
 const User = require('../models/user.model');
+const mongoose = require('mongoose');
 
 /**
  * Initiate a chat room between homeowner and licensed plumber
@@ -213,9 +214,52 @@ const uploadChatMedia = catchAsync(async (req, res) => {
   });
 });
 
+/**
+ * Get unread message counts for the logged-in user
+ */
+const getUnreadCounts = catchAsync(async (req, res) => {
+  const userId = req.user._id;
+
+  const rooms = await ChatRoom.find({
+    $or: [{ homeOwnerId: userId }, { plumberId: userId }],
+  });
+  const roomIds = rooms.map((room) => room._id);
+
+  const aggregation = await Message.aggregate([
+    {
+      $match: {
+        roomId: { $in: roomIds },
+        senderId: { $ne: new mongoose.Types.ObjectId(userId) },
+        read: false,
+      },
+    },
+    {
+      $group: {
+        _id: '$roomId',
+        unreadCount: { $sum: 1 },
+      },
+    },
+  ]);
+
+  let totalUnread = 0;
+  const unreadRooms = aggregation.map((item) => {
+    totalUnread += item.unreadCount;
+    return {
+      roomId: item._id.toString(),
+      unreadCount: item.unreadCount,
+    };
+  });
+
+  res.status(200).send({
+    totalUnread,
+    rooms: unreadRooms,
+  });
+});
+
 module.exports = {
   initChatRoom,
   getMyChatRooms,
   getRoomMessages,
   uploadChatMedia,
+  getUnreadCounts,
 };
