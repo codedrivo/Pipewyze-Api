@@ -164,7 +164,12 @@ async function searchYouTubeVideo(searchQuery) {
   return null;
 }
 
-async function generateAIAnswer(question, isWorkRelated, mediaContext = null) {
+async function generateAIAnswer(
+  question,
+  isWorkRelated,
+  mediaContext = null,
+  mediaUrl = null,
+) {
   const apiKey = process.env.OPENAI_API_KEY;
 
   if (!apiKey) {
@@ -181,34 +186,38 @@ async function generateAIAnswer(question, isWorkRelated, mediaContext = null) {
       ? 'You are a helpful plumbing assistant. Provide a brief, direct answer to the plumbing question. If you are showing a video tutorial, mention it briefly.'
       : "You are a helpful assistant. Provide a brief, direct answer to the user's general question.";
 
-    let userContent = question || '';
-    if (mediaContext) {
-      if (mediaContext === 'image') {
-        systemPrompt =
-          'You are a helpful plumbing assistant. Analyze this plumbing-related image and explain what you can identify. If the image does not contain enough information, clearly say what additional information is needed. ' +
-          systemPrompt;
-        userContent = question
-          ? `[User uploaded an image]: ${question}`
-          : '[User uploaded an image with no text description]';
-      } else if (mediaContext === 'video') {
-        systemPrompt =
-          'You are a helpful plumbing assistant. Analyze the uploaded plumbing video and explain what you can identify. If the video cannot be analyzed directly, clearly state the limitation. ' +
-          systemPrompt;
-        userContent = question
-          ? `[User uploaded a video]: ${question}`
-          : '[User uploaded a video with no text description]';
-      }
+    let userContent;
+
+    if (mediaContext === 'image' && mediaUrl) {
+      systemPrompt =
+        'You are an expert plumbing assistant with computer vision capabilities. Analyze the provided image of plumbing equipment, pipes, or fixtures carefully and identify any issues, leaks, parts, or damage. Provide helpful troubleshooting steps or explanations.';
+      const textPrompt = question
+        ? `[User question with uploaded image]: ${question}`
+        : 'Please analyze this plumbing image, identify any problems or components shown, and explain how to fix or address them.';
+
+      userContent = [
+        { type: 'text', text: textPrompt },
+        { type: 'image_url', image_url: { url: mediaUrl } },
+      ];
+    } else if (mediaContext === 'video') {
+      systemPrompt =
+        'You are a helpful plumbing assistant. Analyze the context of the uploaded plumbing video and provide guidance on what to check or how to address typical issues.';
+      userContent = question
+        ? `[User uploaded a video]: ${question}`
+        : '[User uploaded a plumbing video without additional text.]';
+    } else {
+      userContent = question || 'Hello';
     }
 
     const response = await axios.post(
       'https://api.openai.com/v1/chat/completions',
       {
-        model: 'gpt-3.5-turbo',
+        model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userContent },
         ],
-        max_tokens: 150,
+        max_tokens: 300,
       },
       {
         headers: {
@@ -224,7 +233,7 @@ async function generateAIAnswer(question, isWorkRelated, mediaContext = null) {
       '[AI] OpenAI generation error:',
       err.response?.data?.error?.message || err.message,
     );
-    return "I'm having trouble generating an answer right now, but please see if the provided information helps.";
+    return "I'm having trouble analyzing the image right now, but please see if the provided tutorial or information helps.";
   }
 }
 

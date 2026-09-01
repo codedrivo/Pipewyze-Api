@@ -1089,12 +1089,12 @@ io.on('connection', async (socket) => {
       }
 
       // Generate AI Answer
-      // Generate AI Answer
       console.log('[AI] Generating AI answer...');
       aiMessage = await aiAssistant.generateAIAnswer(
         cleanMessage,
         isWorkRelated,
         mediaContext,
+        finalFileUrl,
       );
       console.log('[AI] Final response generated.');
 
