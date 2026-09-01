@@ -480,6 +480,11 @@ io.on('connection', async (socket) => {
     }
 
     const populatedMessage = await message.populate('senderId', 'fullName profileimageurl');
+    
+    console.log(`\n[CHAT LOG] New message created in room: ${roomId}`);
+    console.log(`[CHAT LOG] Sender: ${senderUser?.role} (${senderUser?.fullName || actualSenderId})`);
+    console.log(`[CHAT LOG] Content: ${finalContent || 'Media File'}`);
+
     // Use socket.to instead of io.to so the sender doesn't receive the event
     socket.to(roomId).emit('new_message', populatedMessage.toJSON());
 
@@ -490,6 +495,7 @@ io.on('connection', async (socket) => {
           : room.homeOwnerId.toString();
 
       if (counterpartId.toString() !== actualSenderId.toString()) {
+        console.log(`[CHAT LOG] Delivering to counterpart ID: ${counterpartId}`);
         const counterpartSockets = await io.in(`user_${counterpartId}`).fetchSockets();
         const isCounterpartActive = counterpartSockets.some((s) => s.activeChatRoomId === roomId.toString());
 
