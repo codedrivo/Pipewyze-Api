@@ -809,23 +809,67 @@ io.on('connection', async (socket) => {
       }
 
       // Create room if it doesn't exist
-      if (!room && receiverId) {
-        const isPlumberRole = senderUser.role === 'licensed-plumber';
-        const homeOwnerId = isPlumberRole ? receiverId : uid;
-        const plumberId = isPlumberRole ? uid : receiverId;
+      if (!room) {
+        if (!receiverId) {
+          return socket.emit('chat_error', { message: 'receiverId is required when creating a new chat room.' });
+        }
+
+        const receiver = await User.findById(receiverId, 'role').lean();
+        if (!receiver) {
+          return socket.emit('chat_error', { message: 'Receiver not found.' });
+        }
+
+        const isPlumber = senderUser.role === 'licensed-plumber';
+        const isReceiverPlumber = receiver.role === 'licensed-plumber';
+
+        let homeOwnerId;
+        let plumberId;
+
+        if (isPlumber && !isReceiverPlumber) {
+          plumberId = uid;
+          homeOwnerId = receiverId.toString();
+        } else if (!isPlumber && isReceiverPlumber) {
+          homeOwnerId = uid;
+          plumberId = receiverId.toString();
+        } else {
+          return socket.emit('chat_error', { message: 'Invalid chat participants.' });
+        }
 
         room = await ChatRoom.create({ _id: roomId, homeOwnerId, plumberId });
 
         // Auto-join connected sockets of both parties
         io.in(`user_${homeOwnerId}`).socketsJoin(roomId.toString());
         io.in(`user_${plumberId}`).socketsJoin(roomId.toString());
-      } else if (room) {
-        const isParticipant =
-          room.homeOwnerId?.toString() === uid || room.plumberId?.toString() === uid;
-        if (!isParticipant) {
-          return socket.emit('chat_error', { message: 'Unauthorized action.' });
-        }
       }
+
+      const senderIdStr = uid.toString();
+      const homeOwnerIdStr = room.homeOwnerId?.toString();
+      const plumberIdStr = room.plumberId?.toString();
+
+      let counterpartId = null;
+
+      if (senderIdStr === homeOwnerIdStr) {
+        counterpartId = plumberIdStr;
+      } else if (senderIdStr === plumberIdStr) {
+        counterpartId = homeOwnerIdStr;
+      } else {
+        return socket.emit('chat_error', { message: 'Unauthorized action. You are not a participant of this chat room.' });
+      }
+
+      if (!counterpartId) {
+        return socket.emit('chat_error', { message: 'Chat room does not have a valid counterpart.' });
+      }
+
+      console.log('========== SEND MESSAGE DEBUG ==========');
+      console.log('socket.id:', socket.id);
+      console.log('authenticated uid:', uid);
+      console.log('roomId:', roomId);
+      console.log('mobile receiverId:', receiverId);
+      console.log('room homeOwnerId:', homeOwnerIdStr);
+      console.log('room plumberId:', plumberIdStr);
+      console.log('calculated counterpartId:', counterpartId);
+      console.log('content:', content);
+      console.log('=========================================');
 
       // Handle Media Upload / URL Parsing
       let finalFileUrl = null;
@@ -873,6 +917,13 @@ io.on('connection', async (socket) => {
         finalContent = finalFileUrl ? isVideo ? 'Video' : 'Photo' : '';
 }
 
+      console.log('[MESSAGE CREATE]', {
+        roomId: roomId.toString(),
+        senderId: uid.toString(),
+        receiverId: counterpartId,
+        content: finalContent,
+      });
+
       // Save Message
       const message = await Message.create({
         roomId,
@@ -892,50 +943,41 @@ io.on('connection', async (socket) => {
       // Emit directly to room participants
       io.to(roomId.toString()).emit('new_message', messageJson);
 
-      if (room) {
-        const counterpartId =
-          room.homeOwnerId?.toString() === uid
-            ? room.plumberId?.toString()
-            : room.homeOwnerId?.toString();
+      const counterpartSockets = await io.in(`user_${counterpartId}`).fetchSockets();
+      const isCounterpartActiveInRoom = counterpartSockets.some(
+        (s) => s.activeChatRoomId === roomId.toString()
+      );
 
-        if (counterpartId && counterpartId !== uid) {
-          const counterpartSockets = await io.in(`user_${counterpartId}`).fetchSockets();
-          const isCounterpartActiveInRoom = counterpartSockets.some(
-            (s) => s.activeChatRoomId === roomId.toString()
-          );
+      if (isCounterpartActiveInRoom) {
+        await Message.findByIdAndUpdate(message._id, { read: true });
+      } else {
+        const unreadCount = await Message.countDocuments({
+          roomId,
+          senderId: { $ne: counterpartId },
+          read: false,
+        });
 
-          if (isCounterpartActiveInRoom) {
-            await Message.findByIdAndUpdate(message._id, { read: true });
-          } else {
-            const unreadCount = await Message.countDocuments({
-              roomId,
-              senderId: { $ne: counterpartId },
-              read: false,
-            });
-
-            io.to(`user_${counterpartId}`).emit('unread_count_updated', {
-              roomId: roomId.toString(),
-              unreadCount,
-            });
-          }
-
-          io.to(`user_${counterpartId}`).emit('chat_notification', {
-            roomId: roomId.toString(),
-            senderName: senderUser.fullName || 'Someone',
-            message: messageJson,
-          });
-
-          // Dispatch push notification asynchronously
-          notificationService
-            .sendToUsers(
-              [counterpartId],
-              `New message from ${senderUser.fullName || 'Someone'}`,
-              finalContent || (isVideo ? 'Sent a video' : 'Sent a photo'),
-              { roomId: roomId.toString(), messageId: message._id.toString() }
-            )
-            .catch((err) => console.error('[Push Notification Error]:', err.message));
-        }
+        io.to(`user_${counterpartId}`).emit('unread_count_updated', {
+          roomId: roomId.toString(),
+          unreadCount,
+        });
       }
+
+      io.to(`user_${counterpartId}`).emit('chat_notification', {
+        roomId: roomId.toString(),
+        senderName: senderUser.fullName || 'Someone',
+        message: messageJson,
+      });
+
+      // Dispatch push notification asynchronously
+      notificationService
+        .sendToUsers(
+          [counterpartId],
+          `New message from ${senderUser.fullName || 'Someone'}`,
+          finalContent || (isVideo ? 'Sent a video' : 'Sent a photo'),
+          { roomId: roomId.toString(), messageId: message._id.toString() }
+        )
+        .catch((err) => console.error('[Push Notification Error]:', err.message));
     } catch (error) {
       console.error('[send_message Error]:', error.message);
       socket.emit('chat_error', { message: 'Failed to send message.' });
