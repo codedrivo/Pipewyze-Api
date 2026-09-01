@@ -149,6 +149,38 @@ io.on('connection', async (socket) => {
   });
 
   // ---------------------------------------------------------------------------
+  // EVENT: chat presence & mark messages read
+  // ---------------------------------------------------------------------------
+  socket.on('chat_opened', ({ roomId }) => {
+    socket.activeChatRoomId = roomId;
+  });
+
+  socket.on('chat_closed', ({ roomId }) => {
+    if (socket.activeChatRoomId === roomId) {
+      socket.activeChatRoomId = null;
+    }
+  });
+
+  socket.on('mark_messages_read', async ({ roomId }) => {
+    const activeUserId = socket.userId || userId;
+    if (activeUserId && roomId) {
+      await Message.updateMany(
+        { roomId, senderId: { $ne: activeUserId }, read: false },
+        { $set: { read: true } }
+      );
+      const unreadCount = await Message.countDocuments({
+        roomId,
+        senderId: { $ne: activeUserId },
+        read: false
+      });
+      io.to(`user_${activeUserId}`).emit('unread_count_updated', {
+        roomId: roomId.toString(),
+        unreadCount
+      });
+    }
+  });
+
+  // ---------------------------------------------------------------------------
   // EVENT: join_room
   // ---------------------------------------------------------------------------
   socket.on('join_room', async ({ roomId, userId: payloadUserId }) => {
@@ -177,6 +209,24 @@ io.on('connection', async (socket) => {
 
         // If authorized, join the socket room
         socket.join(roomId);
+
+        // Mark counterpart's messages as read
+        await Message.updateMany(
+          { roomId, senderId: { $ne: activeUserId }, read: false },
+          { $set: { read: true } }
+        );
+
+        const unreadCount = await Message.countDocuments({
+          roomId,
+          senderId: { $ne: activeUserId },
+          read: false
+        });
+
+        // Notify all of this user's sockets that unread count for this room is updated
+        io.to(`user_${activeUserId}`).emit('unread_count_updated', {
+          roomId: roomId.toString(),
+          unreadCount
+        });
 
         const messages = await Message.find({ roomId })
           .populate('senderId', 'fullName profileimageurl')
@@ -440,6 +490,27 @@ io.on('connection', async (socket) => {
           : room.homeOwnerId.toString();
 
       if (counterpartId.toString() !== actualSenderId.toString()) {
+        const counterpartSockets = await io.in(`user_${counterpartId}`).fetchSockets();
+        const isCounterpartActive = counterpartSockets.some((s) => s.activeChatRoomId === roomId.toString());
+
+        if (isCounterpartActive) {
+          await Message.findByIdAndUpdate(message._id, { read: true });
+        }
+
+        const unreadCount = await Message.countDocuments({
+          roomId,
+          senderId: { $ne: counterpartId },
+          read: false,
+        });
+
+        io.to(`user_${counterpartId}`).emit('unread_count_updated', {
+          roomId: roomId.toString(),
+          unreadCount,
+        });
+
+        // Restore global message delivery so the receiver gets it even if not inside the room socket
+        io.to(`user_${counterpartId}`).emit('new_message', populatedMessage.toJSON());
+
         io.to(`user_${counterpartId}`).emit('chat_notification', {
           roomId,
           senderName: senderUser.fullName || 'Someone',
