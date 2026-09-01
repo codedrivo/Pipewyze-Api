@@ -736,7 +736,7 @@ io.on('connection', async (socket) => {
   });
 
   // Join Room
-  socket.on('join_room', async ({ roomId }) => {
+  socket.on('join_room', async ({ roomId, markAsRead }) => {
     if (!roomId) {
       return socket.emit('chat_error', { message: 'roomId is required.' });
     }
@@ -756,16 +756,18 @@ io.on('connection', async (socket) => {
 
       socket.join(roomId.toString());
 
-      // Mark unread counterpart messages
-      await Message.updateMany(
-        { roomId, senderId: { $ne: uid }, read: false },
-        { $set: { read: true } }
-      );
+      // Only mark as read if the mobile app doesn't explicitly disable it
+      if (markAsRead !== false) {
+        await Message.updateMany(
+          { roomId, senderId: { $ne: uid }, read: false },
+          { $set: { read: true } }
+        );
 
-      io.to(userRoom).emit('unread_count_updated', {
-        roomId: roomId.toString(),
-        unreadCount: 0,
-      });
+        io.to(userRoom).emit('unread_count_updated', {
+          roomId: roomId.toString(),
+          unreadCount: 0,
+        });
+      }
 
       // Fetch message history and counterpart status concurrently
       const counterpartId = isHomeOwner ? room.plumberId?.toString() : room.homeOwnerId?.toString();
