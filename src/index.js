@@ -34,19 +34,25 @@ mongoose.connect(config.mongoose.url).then(() => {
       });
       for (const eq of upcomingServices) {
         if (eq.ownerId) {
-          const brandModel = `${eq.brand || ''} ${eq.model || ''}`.trim() || eq.category;
+          const brandModel =
+            `${eq.brand || ''} ${eq.model || ''}`.trim() || eq.category;
           await notificationService
             .sendToUsers(
               [eq.ownerId.toString()],
               'Upcoming Equipment Service Reminder',
-              `Your ${brandModel} is scheduled for service on ${moment(eq.nextServiceDate).format('YYYY-MM-DD')}.`,
+              `Your ${brandModel} is scheduled for service on ${moment(
+                eq.nextServiceDate,
+              ).format('YYYY-MM-DD')}.`,
               {
                 type: 'maintenance',
                 equipmentId: eq._id.toString(),
               },
             )
             .catch((err) =>
-              console.error(`Failed sending service reminder to user ${eq.ownerId}:`, err.message),
+              console.error(
+                `Failed sending service reminder to user ${eq.ownerId}:`,
+                err.message,
+              ),
             );
         }
       }
