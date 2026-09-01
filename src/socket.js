@@ -731,11 +731,6 @@ io.on('connection', async (socket) => {
         { roomId, senderId: { $ne: uid }, read: false },
         { $set: { read: true } }
       );
-
-      io.to(userRoom).emit('unread_count_updated', {
-        roomId: roomId.toString(),
-        unreadCount: 0,
-      });
     } catch (err) {
       console.error('[mark_messages_read Error]:', err.message);
     }
@@ -768,11 +763,6 @@ io.on('connection', async (socket) => {
           { roomId, senderId: { $ne: uid }, read: false },
           { $set: { read: true } }
         );
-
-        io.to(userRoom).emit('unread_count_updated', {
-          roomId: roomId.toString(),
-          unreadCount: 0,
-        });
       }
 
       // Fetch message history and counterpart status concurrently
@@ -958,17 +948,6 @@ io.on('connection', async (socket) => {
 
       if (isCounterpartActiveInRoom) {
         await Message.findByIdAndUpdate(message._id, { read: true });
-      } else {
-        const unreadCount = await Message.countDocuments({
-          roomId,
-          senderId: { $ne: counterpartId },
-          read: false,
-        });
-
-        io.to(`user_${counterpartId}`).emit('unread_count_updated', {
-          roomId: roomId.toString(),
-          unreadCount,
-        });
       }
 
       io.to(`user_${counterpartId}`).emit('chat_notification', {
