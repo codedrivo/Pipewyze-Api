@@ -228,7 +228,6 @@ const uploadChatMedia = catchAsync(async (req, res) => {
   });
 });
 
-
 module.exports = {
   initChatRoom,
   getMyChatRooms,

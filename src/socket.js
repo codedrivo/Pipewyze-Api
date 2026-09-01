@@ -260,7 +260,7 @@
 //   socket.on('send_message', async ({ roomId, senderId, receiverId, content, fileUrl, fileType, fileName }) => {
 //   try {
 //     const actualSenderId = socket.userId || senderId;
-    
+
 //     if (!roomId || !actualSenderId || (!content && !fileUrl)) {
 //       socket.emit('chat_error', { message: 'Missing roomId, senderId, or content/file.' });
 //       return;
@@ -360,7 +360,7 @@
 //     }
 
 //     const populatedMessage = await message.populate('senderId', 'fullName profileimageurl');
-    
+
 //     console.log(`\n[CHAT LOG] New message created in room: ${roomId}`);
 //     console.log(`[CHAT LOG] Sender: ${senderUser?.role} (${senderUser?.fullName || actualSenderId})`);
 //     console.log(`[CHAT LOG] Content: ${finalContent || 'Media File'}`);
@@ -545,9 +545,9 @@ const config = require('./config/config');
 const ChatRoom = require('./models/chatRoom.model');
 const Message = require('./models/message.model');
 const User = require('./models/user.model');
-const AiVideo = require('./models/aiVideo.model');
 const AiChat = require('./models/aiChat.model');
 const notificationService = require('./services/notification.service');
+const aiAssistant = require('./helpers/aiAssistant.helper');
 
 const app = express();
 const server = http.createServer(app);
@@ -591,7 +591,10 @@ async function uploadBase64ToS3(base64Payload, declaredFileType) {
   cleanBase64 = cleanBase64.replace(/\s/g, '');
   const buffer = Buffer.from(cleanBase64, 'base64');
 
-  const extension = MIME_EXTENSION_MAP[mimeType] || mimeType.split('/').pop().toLowerCase() || 'bin';
+  const extension =
+    MIME_EXTENSION_MAP[mimeType] ||
+    mimeType.split('/').pop().toLowerCase() ||
+    'bin';
   const folder = mimeType.startsWith('video/') ? 'videos' : 'images';
   const uniqueKey = `PipeWyze/${folder}/${crypto.randomUUID()}.${extension}`;
 
@@ -602,7 +605,7 @@ async function uploadBase64ToS3(base64Payload, declaredFileType) {
       Body: buffer,
       ContentType: mimeType,
       ContentLength: buffer.length,
-    })
+    }),
   );
 
   const fileUrl = config.s3.cloudfrontUrl
@@ -618,7 +621,9 @@ async function uploadBase64ToS3(base64Payload, declaredFileType) {
 const verifyToken = (rawToken) => {
   if (!rawToken) return null;
   try {
-    const token = rawToken.startsWith('Bearer ') ? rawToken.split(' ')[1] : rawToken;
+    const token = rawToken.startsWith('Bearer ')
+      ? rawToken.split(' ')[1]
+      : rawToken;
     const decoded = jwt.verify(token, config.jwt.secret, {
       algorithms: [config.jwt.algo || 'HS256'],
     });
@@ -666,15 +671,12 @@ app.use(bodyParser.urlencoded({ extended: false, limit: '50mb' }));
 
 io.use((socket, next) => {
   const rawToken =
-    socket.handshake.auth?.token ||
-    socket.handshake.headers?.authorization;
+    socket.handshake.auth?.token || socket.handshake.headers?.authorization;
 
   const authUserId = verifyToken(rawToken);
 
   if (!authUserId) {
-    return next(
-      new Error('Authentication failed: Missing or invalid token.')
-    );
+    return next(new Error('Authentication failed: Missing or invalid token.'));
   }
 
   socket.userId = authUserId.toString();
@@ -704,7 +706,7 @@ io.on('connection', async (socket) => {
 
     const rooms = await ChatRoom.find(
       { $or: [{ homeOwnerId: uid }, { plumberId: uid }] },
-      { _id: 1 }
+      { _id: 1 },
     ).lean();
 
     rooms.forEach((r) => socket.join(r._id.toString()));
@@ -729,7 +731,7 @@ io.on('connection', async (socket) => {
     try {
       await Message.updateMany(
         { roomId, senderId: { $ne: uid }, read: false },
-        { $set: { read: true } }
+        { $set: { read: true } },
       );
     } catch (err) {
       console.error('[mark_messages_read Error]:', err.message);
@@ -752,7 +754,9 @@ io.on('connection', async (socket) => {
       const isPlumber = room.plumberId?.toString() === uid;
 
       if (!isHomeOwner && !isPlumber) {
-        return socket.emit('chat_error', { message: 'Unauthorized room access.' });
+        return socket.emit('chat_error', {
+          message: 'Unauthorized room access.',
+        });
       }
 
       socket.join(roomId.toString());
@@ -761,12 +765,14 @@ io.on('connection', async (socket) => {
       if (markAsRead !== false) {
         await Message.updateMany(
           { roomId, senderId: { $ne: uid }, read: false },
-          { $set: { read: true } }
+          { $set: { read: true } },
         );
       }
 
       // Fetch message history and counterpart status concurrently
-      const counterpartId = isHomeOwner ? room.plumberId?.toString() : room.homeOwnerId?.toString();
+      const counterpartId = isHomeOwner
+        ? room.plumberId?.toString()
+        : room.homeOwnerId?.toString();
 
       const [messages, counterpartUser] = await Promise.all([
         Message.find({ roomId })
@@ -786,202 +792,239 @@ io.on('connection', async (socket) => {
       }
     } catch (error) {
       console.error('[join_room Error]:', error.message);
-      socket.emit('chat_error', { message: 'Internal server error in join_room.' });
+      socket.emit('chat_error', {
+        message: 'Internal server error in join_room.',
+      });
     }
   });
 
   // Send Message
-  socket.on('send_message', async ({ roomId, receiverId, content, fileUrl, fileType, fileName }) => {
-    try {
-      if (!roomId || (!content && !fileUrl)) {
-        return socket.emit('chat_error', { message: 'Missing roomId or message payload.' });
-      }
-
-      let [senderUser, room] = await Promise.all([
-        User.findById(uid, 'role fullName profileimageurl').lean(),
-        ChatRoom.findById(roomId),
-      ]);
-
-      if (!senderUser) {
-        return socket.emit('chat_error', { message: 'Sender not found.' });
-      }
-
-      // Create room if it doesn't exist
-      if (!room) {
-        if (!receiverId) {
-          return socket.emit('chat_error', { message: 'receiverId is required when creating a new chat room.' });
+  socket.on(
+    'send_message',
+    async ({ roomId, receiverId, content, fileUrl, fileType, fileName }) => {
+      try {
+        if (!roomId || (!content && !fileUrl)) {
+          return socket.emit('chat_error', {
+            message: 'Missing roomId or message payload.',
+          });
         }
 
-        const receiver = await User.findById(receiverId, 'role').lean();
-        if (!receiver) {
-          return socket.emit('chat_error', { message: 'Receiver not found.' });
+        let [senderUser, room] = await Promise.all([
+          User.findById(uid, 'role fullName profileimageurl').lean(),
+          ChatRoom.findById(roomId),
+        ]);
+
+        if (!senderUser) {
+          return socket.emit('chat_error', { message: 'Sender not found.' });
         }
 
-        const isPlumber = senderUser.role === 'licensed-plumber';
-        const isReceiverPlumber = receiver.role === 'licensed-plumber';
+        // Create room if it doesn't exist
+        if (!room) {
+          if (!receiverId) {
+            return socket.emit('chat_error', {
+              message: 'receiverId is required when creating a new chat room.',
+            });
+          }
 
-        let homeOwnerId;
-        let plumberId;
+          const receiver = await User.findById(receiverId, 'role').lean();
+          if (!receiver) {
+            return socket.emit('chat_error', {
+              message: 'Receiver not found.',
+            });
+          }
 
-        if (isPlumber && !isReceiverPlumber) {
-          plumberId = uid;
-          homeOwnerId = receiverId.toString();
-        } else if (!isPlumber && isReceiverPlumber) {
-          homeOwnerId = uid;
-          plumberId = receiverId.toString();
+          const isPlumber = senderUser.role === 'licensed-plumber';
+          const isReceiverPlumber = receiver.role === 'licensed-plumber';
+
+          let homeOwnerId;
+          let plumberId;
+
+          if (isPlumber && !isReceiverPlumber) {
+            plumberId = uid;
+            homeOwnerId = receiverId.toString();
+          } else if (!isPlumber && isReceiverPlumber) {
+            homeOwnerId = uid;
+            plumberId = receiverId.toString();
+          } else {
+            return socket.emit('chat_error', {
+              message: 'Invalid chat participants.',
+            });
+          }
+
+          room = await ChatRoom.create({ _id: roomId, homeOwnerId, plumberId });
+
+          // Auto-join connected sockets of both parties
+          io.in(`user_${homeOwnerId}`).socketsJoin(roomId.toString());
+          io.in(`user_${plumberId}`).socketsJoin(roomId.toString());
+        }
+
+        const senderIdStr = uid.toString();
+        const homeOwnerIdStr = room.homeOwnerId?.toString();
+        const plumberIdStr = room.plumberId?.toString();
+
+        let counterpartId = null;
+
+        if (senderIdStr === homeOwnerIdStr) {
+          counterpartId = plumberIdStr;
+        } else if (senderIdStr === plumberIdStr) {
+          counterpartId = homeOwnerIdStr;
         } else {
-          return socket.emit('chat_error', { message: 'Invalid chat participants.' });
+          return socket.emit('chat_error', {
+            message:
+              'Unauthorized action. You are not a participant of this chat room.',
+          });
         }
 
-        room = await ChatRoom.create({ _id: roomId, homeOwnerId, plumberId });
-
-        // Auto-join connected sockets of both parties
-        io.in(`user_${homeOwnerId}`).socketsJoin(roomId.toString());
-        io.in(`user_${plumberId}`).socketsJoin(roomId.toString());
-      }
-
-      const senderIdStr = uid.toString();
-      const homeOwnerIdStr = room.homeOwnerId?.toString();
-      const plumberIdStr = room.plumberId?.toString();
-
-      let counterpartId = null;
-
-      if (senderIdStr === homeOwnerIdStr) {
-        counterpartId = plumberIdStr;
-      } else if (senderIdStr === plumberIdStr) {
-        counterpartId = homeOwnerIdStr;
-      } else {
-        return socket.emit('chat_error', { message: 'Unauthorized action. You are not a participant of this chat room.' });
-      }
-
-      if (!counterpartId) {
-        return socket.emit('chat_error', { message: 'Chat room does not have a valid counterpart.' });
-      }
-
-      console.log('========== SEND MESSAGE DEBUG ==========');
-      console.log('socket.id:', socket.id);
-      console.log('authenticated uid:', uid);
-      console.log('roomId:', roomId);
-      console.log('mobile receiverId:', receiverId);
-      console.log('room homeOwnerId:', homeOwnerIdStr);
-      console.log('room plumberId:', plumberIdStr);
-      console.log('calculated counterpartId:', counterpartId);
-      console.log('content:', content);
-      console.log('=========================================');
-
-      // Handle Media Upload / URL Parsing
-      let finalFileUrl = null;
-      let finalFileType = fileType || null;
-
-      if (fileUrl) {
-        if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
-          finalFileUrl = fileUrl;
-        } else {
-          const uploadResult = await uploadBase64ToS3(fileUrl, fileType);
-          finalFileUrl = uploadResult.fileUrl;
-          finalFileType = uploadResult.fileType;
+        if (!counterpartId) {
+          return socket.emit('chat_error', {
+            message: 'Chat room does not have a valid counterpart.',
+          });
         }
-      }
 
-      if (!finalFileType && finalFileUrl) {
-        const cleanUrl = finalFileUrl.split('?')[0].toLowerCase();
-        if (/\.(mp4|mov|quicktime|webm|m4v|3gp)$/.test(cleanUrl)) {
-          finalFileType = 'video/mp4';
-        } else if (/\.(jpg|jpeg|png|gif|webp|heic|heif)$/.test(cleanUrl)) {
-          finalFileType = 'image/jpeg';
+        console.log('========== SEND MESSAGE DEBUG ==========');
+        console.log('socket.id:', socket.id);
+        console.log('authenticated uid:', uid);
+        console.log('roomId:', roomId);
+        console.log('mobile receiverId:', receiverId);
+        console.log('room homeOwnerId:', homeOwnerIdStr);
+        console.log('room plumberId:', plumberIdStr);
+        console.log('calculated counterpartId:', counterpartId);
+        console.log('content:', content);
+        console.log('=========================================');
+
+        // Handle Media Upload / URL Parsing
+        let finalFileUrl = null;
+        let finalFileType = fileType || null;
+
+        if (fileUrl) {
+          if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
+            finalFileUrl = fileUrl;
+          } else {
+            const uploadResult = await uploadBase64ToS3(fileUrl, fileType);
+            finalFileUrl = uploadResult.fileUrl;
+            finalFileType = uploadResult.fileType;
+          }
         }
+
+        if (!finalFileType && finalFileUrl) {
+          const cleanUrl = finalFileUrl.split('?')[0].toLowerCase();
+          if (/\.(mp4|mov|quicktime|webm|m4v|3gp)$/.test(cleanUrl)) {
+            finalFileType = 'video/mp4';
+          } else if (/\.(jpg|jpeg|png|gif|webp|heic|heif)$/.test(cleanUrl)) {
+            finalFileType = 'image/jpeg';
+          }
+        }
+
+        const isVideo =
+          (finalFileType && finalFileType.startsWith('video/')) ||
+          /\.(mp4|mov|quicktime|webm|m4v|3gp)$/i.test(
+            finalFileUrl || fileName || '',
+          );
+
+        // Content Sanitization
+        // let finalContent = typeof content === 'string' ? content.trim() : '';
+        // const isBase64Payload =
+        //   finalContent.startsWith('data:') ||
+        //   finalContent.length > 250 ||
+        //   /^[a-zA-Z0-9+/=]{100,}$/.test(finalContent.replace(/\s/g, '')) ||
+        //   finalContent === fileName;
+
+        // if (!finalContent || isBase64Payload) {
+        //   finalContent = finalFileUrl ? (isVideo ? 'Video' : 'Photo') : '';
+        // }
+
+        let finalContent = typeof content === 'string' ? content.trim() : '';
+        const isBase64Payload =
+          finalContent.startsWith('data:') ||
+          /^[a-zA-Z0-9+/=]{100,}$/.test(finalContent.replace(/\s/g, ''));
+
+        if (!finalContent || isBase64Payload) {
+          finalContent = finalFileUrl ? (isVideo ? 'Video' : 'Photo') : '';
+        }
+
+        console.log('[MESSAGE CREATE]', {
+          roomId: roomId.toString(),
+          senderId: uid.toString(),
+          receiverId: counterpartId,
+          content: finalContent,
+        });
+
+        // Save Message
+        const message = await Message.create({
+          roomId,
+          senderId: uid,
+          content: finalContent || (isVideo ? 'Video' : 'Photo'),
+          fileUrl: finalFileUrl,
+          fileType: finalFileType,
+        });
+
+        if (room) {
+          await ChatRoom.findByIdAndUpdate(roomId, {
+            lastMessage: message._id,
+          });
+        }
+
+        const populatedMessage = await message.populate(
+          'senderId',
+          'fullName profileimageurl',
+        );
+        const messageJson = populatedMessage.toJSON();
+
+        // Emit directly to room participants
+        io.to(roomId.toString()).emit('new_message', messageJson);
+
+        const counterpartSockets = await io
+          .in(`user_${counterpartId}`)
+          .fetchSockets();
+        const isCounterpartActiveInRoom = counterpartSockets.some(
+          (s) => s.activeChatRoomId === roomId.toString(),
+        );
+
+        if (isCounterpartActiveInRoom) {
+          await Message.findByIdAndUpdate(message._id, { read: true });
+        }
+
+        io.to(`user_${counterpartId}`).emit('chat_notification', {
+          roomId: roomId.toString(),
+          senderName: senderUser.fullName || 'Someone',
+          message: messageJson,
+        });
+
+        // Dispatch push notification asynchronously
+        notificationService
+          .sendToUsers(
+            [counterpartId],
+            `New message from ${senderUser.fullName || 'Someone'}`,
+            finalContent || (isVideo ? 'Sent a video' : 'Sent a photo'),
+            { roomId: roomId.toString(), messageId: message._id.toString() },
+          )
+          .catch((err) =>
+            console.error('[Push Notification Error]:', err.message),
+          );
+      } catch (error) {
+        console.error('[send_message Error]:', error.message);
+        socket.emit('chat_error', { message: 'Failed to send message.' });
       }
-
-      const isVideo =
-        (finalFileType && finalFileType.startsWith('video/')) ||
-        /\.(mp4|mov|quicktime|webm|m4v|3gp)$/i.test(finalFileUrl || fileName || '');
-
-      // Content Sanitization
-      // let finalContent = typeof content === 'string' ? content.trim() : '';
-      // const isBase64Payload =
-      //   finalContent.startsWith('data:') ||
-      //   finalContent.length > 250 ||
-      //   /^[a-zA-Z0-9+/=]{100,}$/.test(finalContent.replace(/\s/g, '')) ||
-      //   finalContent === fileName;
-
-      // if (!finalContent || isBase64Payload) {
-      //   finalContent = finalFileUrl ? (isVideo ? 'Video' : 'Photo') : '';
-      // }
-
-      let finalContent = typeof content === 'string' ? content.trim() : '';
-      const isBase64Payload = finalContent.startsWith('data:') || /^[a-zA-Z0-9+/=]{100,}$/.test(finalContent.replace(/\s/g, ''));
-
-      if (!finalContent || isBase64Payload) {
-        finalContent = finalFileUrl ? isVideo ? 'Video' : 'Photo' : '';
-}
-
-      console.log('[MESSAGE CREATE]', {
-        roomId: roomId.toString(),
-        senderId: uid.toString(),
-        receiverId: counterpartId,
-        content: finalContent,
-      });
-
-      // Save Message
-      const message = await Message.create({
-        roomId,
-        senderId: uid,
-        content: finalContent || (isVideo ? 'Video' : 'Photo'),
-        fileUrl: finalFileUrl,
-        fileType: finalFileType,
-      });
-
-      if (room) {
-        await ChatRoom.findByIdAndUpdate(roomId, { lastMessage: message._id });
-      }
-
-      const populatedMessage = await message.populate('senderId', 'fullName profileimageurl');
-      const messageJson = populatedMessage.toJSON();
-
-      // Emit directly to room participants
-      io.to(roomId.toString()).emit('new_message', messageJson);
-
-      const counterpartSockets = await io.in(`user_${counterpartId}`).fetchSockets();
-      const isCounterpartActiveInRoom = counterpartSockets.some(
-        (s) => s.activeChatRoomId === roomId.toString()
-      );
-
-      if (isCounterpartActiveInRoom) {
-        await Message.findByIdAndUpdate(message._id, { read: true });
-      }
-
-      io.to(`user_${counterpartId}`).emit('chat_notification', {
-        roomId: roomId.toString(),
-        senderName: senderUser.fullName || 'Someone',
-        message: messageJson,
-      });
-
-      // Dispatch push notification asynchronously
-      notificationService
-        .sendToUsers(
-          [counterpartId],
-          `New message from ${senderUser.fullName || 'Someone'}`,
-          finalContent || (isVideo ? 'Sent a video' : 'Sent a photo'),
-          { roomId: roomId.toString(), messageId: message._id.toString() }
-        )
-        .catch((err) => console.error('[Push Notification Error]:', err.message));
-    } catch (error) {
-      console.error('[send_message Error]:', error.message);
-      socket.emit('chat_error', { message: 'Failed to send message.' });
-    }
-  });
+    },
+  );
 
   // Ask AI
   socket.on('ask_ai', async ({ message, fileUrl, fileType, fileName }) => {
     try {
       if ((!message || !message.trim()) && !fileUrl) {
-        return socket.emit('ai_error', { message: 'Please enter a question or upload a file.' });
+        return socket.emit('ai_error', {
+          message: 'Please enter a question or upload a file.',
+        });
       }
+
+      console.log('[AI] User:', uid);
 
       const user = await User.findById(uid, 'role').lean();
       if (!user) {
         return socket.emit('ai_error', { message: 'User not found.' });
       }
+
+      console.log('[AI] Role:', user.role);
 
       let finalFileUrl = fileUrl || '';
       let finalFileType = fileType || '';
@@ -998,37 +1041,49 @@ io.on('connection', async (socket) => {
 
       const isVideo =
         (finalFileType && finalFileType.startsWith('video/')) ||
-        /\.(mp4|mov|quicktime|webm|m4v|3gp)$/i.test(finalFileUrl || fileName || '');
+        /\.(mp4|mov|quicktime|webm|m4v|3gp)$/i.test(
+          finalFileUrl || fileName || '',
+        );
 
-      const cleanMessage = message ? message.trim() : isVideo ? 'Video' : 'Photo';
-      const queryWords = cleanMessage
-        .toLowerCase()
-        .split(/\s+/)
-        .filter((w) => w.length > 3);
+      const cleanMessage = message
+        ? message.trim()
+        : isVideo
+        ? 'Video'
+        : 'Photo';
+      console.log('[AI] Question:', cleanMessage);
 
-      // Perform MongoDB regex search instead of loading full collection into RAM
+      // Determine if question is work-related
+      const { isWorkRelated, searchQuery } =
+        aiAssistant.isWorkRelatedQuestion(cleanMessage);
+      console.log('[AI] Work related:', isWorkRelated);
+
       let suggestedVideo = null;
-      let aiMessage = 'I am looking into this plumbing question for you.';
+      let aiMessage = '';
 
-      if (queryWords.length > 0) {
-        const regexPatterns = queryWords.map((word) => new RegExp(word, 'i'));
-        const matchedVideo = await AiVideo.findOne({
-          targetAudience: user.role,
-          title: { $in: regexPatterns },
-        }).lean();
+      if (isWorkRelated) {
+        console.log('[AI] Searching AiVideo for query:', searchQuery);
+        suggestedVideo = await aiAssistant.searchAiVideo(
+          searchQuery,
+          user.role,
+        );
 
-        if (matchedVideo) {
-          suggestedVideo = {
-            id: matchedVideo._id || matchedVideo.id,
-            title: matchedVideo.title,
-            videoUrl: matchedVideo.videoUrl,
-            description: matchedVideo.description,
-            thumbnail: matchedVideo.thumbnail,
-            isYoutube: false,
-          };
-          aiMessage = `I found a tutorial video in our library: "${suggestedVideo.title}".`;
+        if (suggestedVideo) {
+          console.log('[AI] AiVideo found:', suggestedVideo.title);
+        } else {
+          console.log('[AI] Searching YouTube...');
+          suggestedVideo = await aiAssistant.searchYouTubeVideo(searchQuery);
+          if (suggestedVideo) {
+            console.log('[AI] YouTube video found:', suggestedVideo.title);
+          }
         }
       }
+
+      // Generate AI Answer
+      aiMessage = await aiAssistant.generateAIAnswer(
+        cleanMessage,
+        isWorkRelated,
+      );
+      console.log('[AI] Final response generated.');
 
       const responsePayload = {
         sender: 'ai',
@@ -1052,7 +1107,9 @@ io.on('connection', async (socket) => {
       socket.emit('ai_response', responsePayload);
     } catch (err) {
       console.error('[ask_ai Error]:', err.message);
-      socket.emit('ai_error', { message: 'Failed to process AI assistant request.' });
+      socket.emit('ai_error', {
+        message: 'Failed to process AI assistant request.',
+      });
     }
   });
 
@@ -1064,8 +1121,10 @@ io.on('connection', async (socket) => {
       // Check remaining connected sockets in this user's private room
       const remainingSockets = await io.in(userRoom).fetchSockets();
       const remainingCount = remainingSockets.length;
-      
-      console.log(`[Presence Debug] User ${uid} has ${remainingCount} socket(s) remaining`);
+
+      console.log(
+        `[Presence Debug] User ${uid} has ${remainingCount} socket(s) remaining`,
+      );
 
       if (remainingCount === 0) {
         console.log(`[Presence] User ${uid} is now OFFLINE`);
