@@ -485,8 +485,8 @@ io.on('connection', async (socket) => {
     console.log(`[CHAT LOG] Sender: ${senderUser?.role} (${senderUser?.fullName || actualSenderId})`);
     console.log(`[CHAT LOG] Content: ${finalContent || 'Media File'}`);
 
-    // Use socket.to instead of io.to so the sender doesn't receive the event
-    socket.to(roomId).emit('new_message', populatedMessage.toJSON());
+    // Emit to the sender explicitly so their UI updates immediately without needing to refresh
+    io.to(`user_${actualSenderId}`).emit('new_message', populatedMessage.toJSON());
 
     if (room) {
       const counterpartId =
@@ -522,6 +522,8 @@ io.on('connection', async (socket) => {
           senderName: senderUser.fullName || 'Someone',
           message: populatedMessage,
         });
+
+        console.log(`[FCM DEBUG] Sending notification to counterpart: ${counterpartId}`);
 
         notificationService
           .sendToUsers(
