@@ -690,9 +690,15 @@ io.on('connection', async (socket) => {
   const userRoom = `user_${uid}`;
 
   socket.join(userRoom);
+  console.log(`[Socket Connected] User ${uid} connected`);
 
   // Initialize User status & join active chat rooms
   try {
+    const connectedSockets = await io.in(userRoom).fetchSockets();
+    if (connectedSockets.length === 1) {
+      console.log(`[Presence] User ${uid} is now ONLINE`);
+    }
+
     await User.findByIdAndUpdate(uid, { isOnline: true });
     io.emit('user_status_changed', { userId: uid, isOnline: true });
 
@@ -1074,11 +1080,16 @@ io.on('connection', async (socket) => {
   // Disconnect Handling
   socket.on('disconnect', async () => {
     try {
-      // Check remaining connected sockets in this user's private room
-      const remainingSockets = io.sockets.adapter.rooms.get(userRoom);
-      const isCompletelyOffline = !remainingSockets || remainingSockets.size === 0;
+      console.log(`[Socket Disconnected] User ${uid} disconnected`);
 
-      if (isCompletelyOffline) {
+      // Check remaining connected sockets in this user's private room
+      const remainingSockets = await io.in(userRoom).fetchSockets();
+      const remainingCount = remainingSockets.length;
+      
+      console.log(`[Presence Debug] User ${uid} has ${remainingCount} socket(s) remaining`);
+
+      if (remainingCount === 0) {
+        console.log(`[Presence] User ${uid} is now OFFLINE`);
         await User.findByIdAndUpdate(uid, { isOnline: false });
         io.emit('user_status_changed', { userId: uid, isOnline: false });
       }
