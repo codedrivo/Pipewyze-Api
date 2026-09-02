@@ -80,6 +80,7 @@ const getMyChatRooms = catchAsync(async (req, res) => {
     {
       $match: {
         roomId: { $in: roomIds },
+        senderId: { $ne: new mongoose.Types.ObjectId(userId) },
         read: false,
       },
     },

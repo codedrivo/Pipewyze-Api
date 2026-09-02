@@ -3,7 +3,9 @@ const AiVideo = require('../models/aiVideo.model');
 
 // Basic internal heuristic for plumbing/work
 function isWorkRelatedQuestion(question) {
-  if (!question) return { isWorkRelated: false, searchQuery: '' };
+  if (!question || typeof question !== 'string') {
+    return { isWorkRelated: false, searchQuery: '' };
+  }
 
   const qLower = question.toLowerCase();
 
@@ -40,6 +42,13 @@ function isWorkRelatedQuestion(question) {
     'install',
     'fix',
     'replace',
+    'water',
+    'heater',
+    'shower',
+    'bath',
+    'tub',
+    'basin',
+    'sanitary',
   ];
 
   let matchCount = 0;
@@ -67,6 +76,9 @@ function isWorkRelatedQuestion(question) {
     'me',
     'with',
     'for',
+    'please',
+    'tell',
+    'about',
   ];
   const words = qLower.split(/\s+/);
   const searchWords = words.filter(
@@ -82,25 +94,80 @@ function isWorkRelatedQuestion(question) {
 }
 
 async function searchAiVideo(searchQuery, userRole) {
-  if (!searchQuery) return null;
+  if (!searchQuery || typeof searchQuery !== 'string') return null;
+  const trimmedQuery = searchQuery.trim();
+  if (!trimmedQuery) return null;
+
   try {
-    const queryWords = searchQuery.split(/\s+/);
-    const regexConditions = queryWords.flatMap((word) => [
-      { title: { $regex: word, $options: 'i' } },
-      { description: { $regex: word, $options: 'i' } },
-    ]);
+    const queryWords = trimmedQuery
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length > 2);
 
-    // Try finding for specific role first
-    let matchedVideo = await AiVideo.findOne({
-      $or: regexConditions,
-      targetAudience: userRole,
-    }).lean();
+    if (queryWords.length === 0) return null;
 
-    // If not found, broaden search to any audience
+    // Helper to calculate relevance score for candidate videos
+    const scoreVideo = (video) => {
+      const titleLower = (video.title || '').toLowerCase();
+      const descLower = (video.description || '').toLowerCase();
+      const qLower = trimmedQuery.toLowerCase();
+
+      let score = 0;
+
+      // 1. Phrase/exact match in title or description
+      if (titleLower.includes(qLower)) score += 100;
+      else if (descLower.includes(qLower)) score += 50;
+
+      // 2. Keyword matches in title & description
+      let titleMatches = 0;
+      let descMatches = 0;
+      queryWords.forEach((word) => {
+        if (titleLower.includes(word)) titleMatches++;
+        if (descLower.includes(word)) descMatches++;
+      });
+
+      score += titleMatches * 15;
+      score += descMatches * 5;
+
+      // Boost for multiple keyword matches
+      if (titleMatches > 1) score += titleMatches * 10;
+
+      return { video, score };
+    };
+
+    const findBestMatch = async (roleFilter) => {
+      const regexConditions = queryWords.flatMap((word) => [
+        { title: { $regex: word, $options: 'i' } },
+        { description: { $regex: word, $options: 'i' } },
+      ]);
+
+      if (regexConditions.length === 0) return null;
+
+      const query = { $or: regexConditions };
+      if (roleFilter) {
+        query.targetAudience = roleFilter;
+      }
+
+      const candidateVideos = await AiVideo.find(query).lean();
+      if (!candidateVideos || candidateVideos.length === 0) return null;
+
+      const scored = candidateVideos
+        .map(scoreVideo)
+        .filter((item) => item.score > 0)
+        .sort((a, b) => b.score - a.score);
+
+      return scored.length > 0 ? scored[0].video : null;
+    };
+
+    // 1. Try finding for specific user role first
+    let matchedVideo = null;
+    if (userRole) {
+      matchedVideo = await findBestMatch(userRole);
+    }
+
+    // 2. If not found for role, broaden search to any audience
     if (!matchedVideo) {
-      matchedVideo = await AiVideo.findOne({
-        $or: regexConditions,
-      }).lean();
+      matchedVideo = await findBestMatch(null);
     }
 
     if (matchedVideo) {
@@ -119,15 +186,21 @@ async function searchAiVideo(searchQuery, userRole) {
   return null;
 }
 
-async function searchYouTubeVideo(searchQuery) {
+async function searchYouTubeVideo(searchQuery, isWorkRelated = true) {
   const apiKey = process.env.YOUTUBE_API_KEY;
-  if (!apiKey) {
-    console.log('[AI] YOUTUBE_API_KEY not found in environment.');
+  if (!apiKey || !searchQuery || typeof searchQuery !== 'string') {
+    if (!apiKey) console.log('[AI] YOUTUBE_API_KEY not found in environment.');
     return null;
   }
 
+  const cleanQuery = searchQuery.trim();
+  if (!cleanQuery) return null;
+
   try {
-    const q = `${searchQuery} plumbing tutorial`;
+    const q = isWorkRelated
+      ? `${cleanQuery} plumbing tutorial`
+      : `${cleanQuery} tutorial`;
+
     const response = await axios.get(
       'https://www.googleapis.com/youtube/v3/search',
       {
