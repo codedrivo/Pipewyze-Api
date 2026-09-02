@@ -1075,29 +1075,34 @@ io.on('connection', async (socket) => {
           ? 'plumbing repair tutorial'
           : '');
 
-      console.log('[AI] Work related:', effectiveIsWorkRelated);
-
       let suggestedVideo = null;
       let aiMessage = '';
 
       if (effectiveIsWorkRelated) {
-        console.log('[AI] Searching AiVideo for query:', effectiveSearchQuery);
+        console.log('[AI] Work-related question detected');
+        console.log('[AI] Searching PipeWyze AiVideo...');
         suggestedVideo = await aiAssistant.searchAiVideo(
           effectiveSearchQuery,
           user.role,
         );
 
         if (suggestedVideo) {
-          console.log('[AI] AiVideo found:', suggestedVideo.title);
+          console.log('[AI] AiVideo found');
         } else {
-          console.log('[AI] Searching YouTube...');
+          console.log('[AI] No AiVideo found, searching YouTube...');
           suggestedVideo = await aiAssistant.searchYouTubeVideo(
             effectiveSearchQuery,
+            effectiveIsWorkRelated,
           );
           if (suggestedVideo) {
-            console.log('[AI] YouTube video found:', suggestedVideo.title);
+            console.log('[AI] YouTube video found');
+          } else {
+            console.log('[AI] No YouTube video found');
           }
         }
+      } else {
+        console.log('[AI] General question detected');
+        suggestedVideo = null;
       }
 
       // Generate AI Answer
