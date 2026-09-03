@@ -211,6 +211,7 @@ io.on('connection', async (socket) => {
       io.to(roomId.toString()).emit('messages_read', {
         roomId: roomId.toString(),
         readBy: uid.toString(),
+        read: true,
       });
     } catch (err) {
       console.error('[mark_messages_read Error]:', err.message);
@@ -239,9 +240,10 @@ io.on('connection', async (socket) => {
       }
 
       socket.join(roomId.toString());
+      socket.activeChatRoomId = roomId.toString();
 
-      // Only mark as read if markAsRead is true (or when explicitly intended to open/read chat)
-      if (markAsRead === true) {
+      // Mark as read unless explicitly disabled with markAsRead === false
+      if (markAsRead !== false) {
         await Message.updateMany(
           { roomId, senderId: { $ne: uid }, read: false },
           { $set: { read: true } },
@@ -249,6 +251,7 @@ io.on('connection', async (socket) => {
         io.to(roomId.toString()).emit('messages_read', {
           roomId: roomId.toString(),
           readBy: uid.toString(),
+          read: true,
         });
       }
 
