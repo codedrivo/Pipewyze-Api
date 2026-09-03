@@ -184,16 +184,13 @@ io.on('connection', async (socket) => {
   // Presence Tracking
   socket.on('chat_opened', ({ roomId }) => {
     if (roomId) socket.activeChatRoomId = roomId.toString();
-    console.log(`[CHAT PRESENCE] chat_opened for user ${uid}, activeChatRoomId set to: ${socket.activeChatRoomId}`);
   });
 
   socket.on('chat_closed', (data) => {
     const roomId = data?.roomId;
-    console.log(`[CHAT PRESENCE] chat_closed triggered for user ${uid}, previous activeChatRoomId: ${socket.activeChatRoomId}, data:`, data);
     if (!roomId || socket.activeChatRoomId === roomId.toString()) {
       socket.activeChatRoomId = null;
     }
-    console.log(`[CHAT PRESENCE] activeChatRoomId after chat_closed: ${socket.activeChatRoomId}`);
   });
 
   // Mark Messages Read
@@ -424,16 +421,9 @@ io.on('connection', async (socket) => {
           .in(`user_${counterpartId}`)
           .fetchSockets();
 
-        console.log(`[CHAT UNREAD DEBUG] Found ${counterpartSockets.length} socket(s) for counterpartId: ${counterpartId}`);
-        counterpartSockets.forEach((s, idx) => {
-          console.log(`[CHAT UNREAD DEBUG] Counterpart socket #${idx + 1} (id: ${s.id}) activeChatRoomId: ${s.activeChatRoomId}`);
-        });
-
         const isCounterpartActiveInRoom = counterpartSockets.some(
           (s) => s.activeChatRoomId === roomId.toString(),
         );
-
-        console.log(`[CHAT UNREAD DEBUG] isCounterpartActiveInRoom: ${isCounterpartActiveInRoom} -> Message read will be saved as: ${isCounterpartActiveInRoom}`);
 
         // Save Message using database generated timestamp and initial read status based on active chat presence
         const message = await Message.create({
@@ -489,7 +479,6 @@ io.on('connection', async (socket) => {
 
         // Dispatch push notification asynchronously ONLY if recipient is not active in the chat room
         if (!isCounterpartActiveInRoom) {
-          console.log(`[PUSH NOTIFICATION DEBUG] Dispatching FCM notification to counterpartId: ${counterpartId}`);
           notificationService
             .sendToUsers(
               [counterpartId],
@@ -500,8 +489,6 @@ io.on('connection', async (socket) => {
             .catch((err) =>
               console.error('[Push Notification Error]:', err.message),
             );
-        } else {
-          console.log(`[PUSH NOTIFICATION DEBUG] Counterpart is active in room. Suppressing FCM push notification.`);
         }
       } catch (error) {
         console.error('[send_message Error]:', error.message);
