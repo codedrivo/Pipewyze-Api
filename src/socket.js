@@ -158,6 +158,7 @@ io.on('connection', async (socket) => {
   const userRoom = `user_${uid}`;
 
   socket.join(userRoom);
+  socket.activeChatRoomId = null;
   console.log(`[Socket Connected] User ${uid} connected`);
 
   // Initialize User status & join active chat rooms
@@ -207,6 +208,10 @@ io.on('connection', async (socket) => {
         { roomId, senderId: { $ne: uid }, read: false },
         { $set: { read: true } },
       );
+      io.to(roomId.toString()).emit('messages_read', {
+        roomId: roomId.toString(),
+        readBy: uid.toString(),
+      });
     } catch (err) {
       console.error('[mark_messages_read Error]:', err.message);
     }
@@ -241,6 +246,10 @@ io.on('connection', async (socket) => {
           { roomId, senderId: { $ne: uid }, read: false },
           { $set: { read: true } },
         );
+        io.to(roomId.toString()).emit('messages_read', {
+          roomId: roomId.toString(),
+          readBy: uid.toString(),
+        });
       }
 
       // Fetch message history with deterministic sorting and counterpart status concurrently
