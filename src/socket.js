@@ -240,10 +240,9 @@ io.on('connection', async (socket) => {
       }
 
       socket.join(roomId.toString());
-      socket.activeChatRoomId = roomId.toString();
 
-      // Mark as read unless explicitly disabled with markAsRead === false
-      if (markAsRead !== false) {
+      // Only mark as read if explicitly requested via markAsRead === true (when entering the actual chat screen)
+      if (markAsRead === true) {
         await Message.updateMany(
           { roomId, senderId: { $ne: uid }, read: false },
           { $set: { read: true } },
