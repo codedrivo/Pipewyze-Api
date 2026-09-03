@@ -186,11 +186,19 @@ const updateFcmToken = catchAsync(async (req, res, next) => {
   const { token } = req.body;
   const user = req.user;
 
+  if (token) {
+    // Remove this token from any other user accounts so tokens are strictly 1-to-1 with the current logged-in user
+    await User.updateMany(
+      { _id: { $ne: user._id }, fcmTokens: token },
+      { $pull: { fcmTokens: token } },
+    );
+  }
+
   if (!user.fcmTokens) {
     user.fcmTokens = [];
   }
 
-  if (!user.fcmTokens.includes(token)) {
+  if (token && !user.fcmTokens.includes(token)) {
     user.fcmTokens.push(token);
     await user.save();
   }
