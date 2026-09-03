@@ -1,5 +1,6 @@
 const catchAsync = require('../../helpers/asyncErrorHandler');
 const Notification = require('../../models/notification.model');
+const User = require('../../models/user.model');
 
 const ApiError = require('../../helpers/apiErrorConverter');
 const service = require('../../services/auth/auth.service');
@@ -183,28 +184,38 @@ const addSupport = catchAsync(async (req, res) => {
 
 // Update FCM token
 const updateFcmToken = catchAsync(async (req, res, next) => {
-  const { token } = req.body;
-  const user = req.user;
+  const fcmToken = req.body.fcmToken || req.body.token;
+  const userId = req.user._id || req.user.id;
 
-  if (token) {
-    // Remove this token from any other user accounts so tokens are strictly 1-to-1 with the current logged-in user
-    await User.updateMany(
-      { _id: { $ne: user._id }, fcmTokens: token },
-      { $pull: { fcmTokens: token } },
-    );
+  if (!fcmToken) {
+    throw new ApiError('FCM token is required', 400);
   }
 
-  if (!user.fcmTokens) {
-    user.fcmTokens = [];
+  // Ensure token is pulled from any other user so device token is unique to current user
+  await User.updateMany(
+    { _id: { $ne: userId }, fcmTokens: fcmToken },
+    { $pull: { fcmTokens: fcmToken } },
+  );
+
+  const user = await User.findByIdAndUpdate(
+    userId,
+    {
+      $addToSet: {
+        fcmTokens: fcmToken,
+      },
+    },
+    {
+      new: true,
+    },
+  );
+
+  if (!user) {
+    throw new ApiError('User not found', 404);
   }
 
-  if (token && !user.fcmTokens.includes(token)) {
-    user.fcmTokens.push(token);
-    await user.save();
-  }
-
-  res.status(200).json({
-    message: 'FCM Token registered successfully',
+  return res.status(200).send({
+    success: true,
+    message: 'FCM token saved successfully',
   });
 });
 
