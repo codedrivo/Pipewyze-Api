@@ -186,8 +186,9 @@ io.on('connection', async (socket) => {
     if (roomId) socket.activeChatRoomId = roomId.toString();
   });
 
-  socket.on('chat_closed', ({ roomId }) => {
-    if (socket.activeChatRoomId === roomId?.toString()) {
+  socket.on('chat_closed', (data) => {
+    const roomId = data?.roomId;
+    if (!roomId || socket.activeChatRoomId === roomId.toString()) {
       socket.activeChatRoomId = null;
     }
   });
