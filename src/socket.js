@@ -472,17 +472,19 @@ io.on('connection', async (socket) => {
           message: messageJson,
         });
 
-        // Dispatch push notification asynchronously
-        notificationService
-          .sendToUsers(
-            [counterpartId],
-            `New message from ${senderUser.fullName || 'Someone'}`,
-            finalContent || (isVideo ? 'Sent a video' : 'Sent a photo'),
-            { roomId: roomId.toString(), messageId: message._id.toString() },
-          )
-          .catch((err) =>
-            console.error('[Push Notification Error]:', err.message),
-          );
+        // Dispatch push notification asynchronously ONLY if recipient is not active in the chat room
+        if (!isCounterpartActiveInRoom) {
+          notificationService
+            .sendToUsers(
+              [counterpartId],
+              `New message from ${senderUser.fullName || 'Someone'}`,
+              finalContent || (isVideo ? 'Sent a video' : 'Sent a photo'),
+              { roomId: roomId.toString(), messageId: message._id.toString() },
+            )
+            .catch((err) =>
+              console.error('[Push Notification Error]:', err.message),
+            );
+        }
       } catch (error) {
         console.error('[send_message Error]:', error.message);
         socket.emit('chat_error', { message: 'Failed to send message.' });
