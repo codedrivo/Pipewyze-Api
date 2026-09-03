@@ -199,8 +199,9 @@ const getRoomMessages = catchAsync(async (req, res) => {
   );
 
   const messages = await Message.find({ roomId })
-    .sort({ createdAt: 1 })
-    .populate('senderId', 'fullName profileimageurl');
+    .sort({ createdAt: 1, _id: 1 })
+    .populate('senderId', 'fullName profileimageurl')
+    .lean();
 
   res.status(200).send({
     message: 'Messages retrieved successfully',

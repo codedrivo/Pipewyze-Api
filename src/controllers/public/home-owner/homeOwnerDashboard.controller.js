@@ -38,7 +38,7 @@ const getDashboardSummary = catchAsync(async (req, res) => {
 const getRecentReminder = catchAsync(async (req, res) => {
   const homeownerId = req.user._id;
 
-  const recentReminder = await Equipment.findOne({
+  const reminders = await Equipment.find({
     ownerId: homeownerId,
     nextServiceDate: { $exists: true, $ne: null },
   })
@@ -47,7 +47,7 @@ const getRecentReminder = catchAsync(async (req, res) => {
 
   res.status(200).send({
     status: 200,
-    data: recentReminder,
+    data: reminders,
   });
 });
 
