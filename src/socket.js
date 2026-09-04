@@ -832,6 +832,73 @@ io.on('connection', async (socket) => {
   // chat_opened = user is actually viewing this room.
   // chat_closed = user stopped viewing this room.
 
+  // Atomic chat-open event. This combines room subscription + active presence
+  // + directional read receipts in ONE server event.
+  socket.on('open_chat', async ({ roomId } = {}) => {
+    if (!roomId) return;
+
+    const cleanRoomId = roomId.toString().trim();
+    if (!cleanRoomId) return;
+
+    try {
+      const room = await ChatRoom.findById(cleanRoomId).lean();
+      if (!room) {
+        return socket.emit('chat_error', { message: 'Chat room not found.' });
+      }
+
+      const isHomeOwner = room.homeOwnerId?.toString() === uid;
+      const isPlumber = room.plumberId?.toString() === uid;
+      if (!isHomeOwner && !isPlumber) {
+        return socket.emit('chat_error', { message: 'Unauthorized room access.' });
+      }
+
+      if (socket.activeRoom && socket.activeRoom !== cleanRoomId) {
+        socket.leave(socket.activeRoom);
+      }
+
+      socket.activeRoom = cleanRoomId;
+      socket.join(cleanRoomId);
+
+      console.log(`[CHAT] open_chat | uid=${uid} | room=${cleanRoomId}`);
+
+      const unreadMessages = await Message.find({
+        roomId: cleanRoomId,
+        senderId: { $ne: uid },
+        read: false,
+      })
+        .select('_id senderId')
+        .lean();
+
+      if (unreadMessages.length === 0) {
+        console.log(`[CHAT] open_chat | uid=${uid} | room=${cleanRoomId} | no unread`);
+        return;
+      }
+
+      await Message.updateMany(
+        { _id: { $in: unreadMessages.map((message) => message._id) } },
+        { $set: { read: true } },
+      );
+
+      const senderIds = [
+        ...new Set(unreadMessages.map((message) => message.senderId.toString())),
+      ];
+
+      for (const senderId of senderIds) {
+        io.to(`user_${senderId}`).emit('messages_read', {
+          roomId: cleanRoomId,
+          readBy: uid.toString(),
+          read: true,
+        });
+      }
+
+      console.log(
+        `[CHAT] messages_read | room=${cleanRoomId} | readBy=${uid} | count=${unreadMessages.length}`,
+      );
+    } catch (err) {
+      console.error('[open_chat Error]:', err.message);
+    }
+  });
+
   socket.on('chat_opened', async ({ roomId } = {}) => {
     if (!roomId) return;
 
@@ -1067,7 +1134,7 @@ io.on('connection', async (socket) => {
           });
         }
 
-        const cleanRoomId = roomId.toString();
+        const cleanRoomId = roomId.toString().trim();
         let [senderUser, room] = await Promise.all([
           User.findById(uid, 'role fullName profileimageurl').lean(),
           ChatRoom.findById(cleanRoomId),
