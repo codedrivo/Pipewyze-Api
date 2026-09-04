@@ -678,7 +678,6 @@
 // });
 
 // module.exports = { io, server };
-
 /* eslint-disable no-console */
 const http = require('http');
 const crypto = require('crypto');
@@ -811,40 +810,10 @@ io.use((socket, next) => {
   }
 
   socket.userId = authUserId.toString();
+  socket.data.userId = authUserId.toString();
+  socket.data.activeChatRoomId = null;
   next();
 });
-
-// Track which users are currently inside specific rooms: roomId -> Set of userIds
-const activeChatRoomUsers = new Map();
-
-const isUserInChatRoom = (roomId, userId) => {
-  if (!roomId || !userId) return false;
-  const users = activeChatRoomUsers.get(roomId.toString());
-  return users ? users.has(userId.toString()) : false;
-};
-
-const setUserInChatRoom = (roomId, userId) => {
-  if (!roomId || !userId) return;
-  const rId = roomId.toString();
-  const uId = userId.toString();
-  if (!activeChatRoomUsers.has(rId)) {
-    activeChatRoomUsers.set(rId, new Set());
-  }
-  activeChatRoomUsers.get(rId).add(uId);
-};
-
-const removeUserFromChatRoom = (roomId, userId) => {
-  if (!roomId || !userId) return;
-  const rId = roomId.toString();
-  const uId = userId.toString();
-  if (activeChatRoomUsers.has(rId)) {
-    const users = activeChatRoomUsers.get(rId);
-    users.delete(uId);
-    if (users.size === 0) {
-      activeChatRoomUsers.delete(rId);
-    }
-  }
-};
 
 // -----------------------------------------------------------------------------
 // CONNECTION LIFECYCLE & EVENT HANDLERS
@@ -854,7 +823,7 @@ io.on('connection', async (socket) => {
   const userRoom = `user_${uid}`;
 
   socket.join(userRoom);
-  socket.activeChatRoomId = null;
+  socket.data.activeChatRoomId = null;
   console.log(`[Socket Connected] User ${uid} connected`);
 
   try {
@@ -868,13 +837,12 @@ io.on('connection', async (socket) => {
     console.error(`[Init User Error] User ${uid}:`, err.message);
   }
 
-  // Presence Tracking
+  // Active Screen Presence: Only set when user is actively inside the chat screen
   socket.on('chat_opened', async ({ roomId }) => {
     if (!roomId) return;
     const cleanRoomId = roomId.toString();
-    socket.activeChatRoomId = cleanRoomId;
+    socket.data.activeChatRoomId = cleanRoomId;
     socket.join(cleanRoomId);
-    setUserInChatRoom(cleanRoomId, uid);
 
     try {
       const room = await ChatRoom.findById(cleanRoomId).lean();
@@ -884,7 +852,6 @@ io.on('connection', async (socket) => {
       const isPlumber = room.plumberId?.toString() === uid;
       if (!isHomeOwner && !isPlumber) return;
 
-      // Mark messages read when user actively opens the screen
       const updateResult = await Message.updateMany(
         { roomId: cleanRoomId, senderId: { $ne: uid }, read: false },
         { $set: { read: true } },
@@ -902,27 +869,24 @@ io.on('connection', async (socket) => {
     }
   });
 
-  socket.on('chat_closed', (data) => {
-    const roomId = data?.roomId || socket.activeChatRoomId;
-    if (roomId) {
-      const cleanRoomId = roomId.toString();
-      removeUserFromChatRoom(cleanRoomId, uid);
-      socket.leave(cleanRoomId);
+  socket.on('chat_closed', ({ roomId } = {}) => {
+    const targetRoomId = roomId?.toString() || socket.data.activeChatRoomId;
+    if (targetRoomId) {
+      socket.leave(targetRoomId);
     }
-    socket.activeChatRoomId = null;
+    socket.data.activeChatRoomId = null;
   });
 
-  // Mark Messages Read
+  // Explicit Mark Read Event (only processes if client is in the room)
   socket.on('mark_messages_read', async ({ roomId }) => {
     if (!roomId) return;
+    const cleanRoomId = roomId.toString();
+
+    if (socket.data.activeChatRoomId !== cleanRoomId) {
+      return;
+    }
+
     try {
-      const cleanRoomId = roomId.toString();
-
-      // Guard: Only process mark_read if this client is currently active in the room
-      if (socket.activeChatRoomId !== cleanRoomId) {
-        return;
-      }
-
       const room = await ChatRoom.findById(cleanRoomId).lean();
       if (!room) return;
       if (
@@ -949,7 +913,7 @@ io.on('connection', async (socket) => {
     }
   });
 
-  // Join Room
+  // Join Room for data stream / history subscription
   socket.on('join_room', async ({ roomId, markAsRead }) => {
     if (!roomId) {
       return socket.emit('chat_error', { message: 'roomId is required.' });
@@ -973,11 +937,9 @@ io.on('connection', async (socket) => {
 
       socket.join(cleanRoomId);
 
-      // Only mark messages as read and assign presence if explicitly navigating to the screen
+      // Only mark read if explicitly requested AND active presence is indicated
       if (markAsRead === true) {
-        socket.activeChatRoomId = cleanRoomId;
-        setUserInChatRoom(cleanRoomId, uid);
-
+        socket.data.activeChatRoomId = cleanRoomId;
         const updateResult = await Message.updateMany(
           { roomId: cleanRoomId, senderId: { $ne: uid }, read: false },
           { $set: { read: true } },
@@ -1041,7 +1003,6 @@ io.on('connection', async (socket) => {
           return socket.emit('chat_error', { message: 'Sender not found.' });
         }
 
-        // Create room if it doesn't exist
         if (!room) {
           if (!receiverId) {
             return socket.emit('chat_error', {
@@ -1092,8 +1053,7 @@ io.on('connection', async (socket) => {
           counterpartId = homeOwnerIdStr;
         } else {
           return socket.emit('chat_error', {
-            message:
-              'Unauthorized action. You are not a participant of this chat room.',
+            message: 'Unauthorized action. You are not a participant of this chat room.',
           });
         }
 
@@ -1103,7 +1063,7 @@ io.on('connection', async (socket) => {
           });
         }
 
-        // Handle Media Upload / URL Parsing
+        // Handle Media
         let finalFileUrl = null;
         let finalFileType = fileType || null;
 
@@ -1141,8 +1101,14 @@ io.on('connection', async (socket) => {
           finalContent = finalFileUrl ? (isVideo ? 'Video' : 'Photo') : '';
         }
 
-        // Read status is true ONLY if counterpart is currently active inside this specific chat screen
-        const isCounterpartActiveInRoom = isUserInChatRoom(cleanRoomId, counterpartId);
+        // Reliably verify if counterpart currently has an open socket viewing this room
+        const counterpartSockets = await io
+          .in(`user_${counterpartId}`)
+          .fetchSockets();
+
+        const isCounterpartActiveInRoom = counterpartSockets.some(
+          (s) => s.data?.activeChatRoomId === cleanRoomId,
+        );
 
         const message = await Message.create({
           roomId: cleanRoomId,
@@ -1173,7 +1139,6 @@ io.on('connection', async (socket) => {
           message: messageJson,
         });
 
-        // Dispatch push notification only if recipient is not inside this specific chat screen
         if (!isCounterpartActiveInRoom) {
           notificationService
             .sendToUsers(
@@ -1308,10 +1273,7 @@ io.on('connection', async (socket) => {
   socket.on('disconnect', async () => {
     try {
       console.log(`[Socket Disconnected] User ${uid} disconnected`);
-
-      if (socket.activeChatRoomId) {
-        removeUserFromChatRoom(socket.activeChatRoomId, uid);
-      }
+      socket.data.activeChatRoomId = null;
 
       const remainingSockets = await io.in(userRoom).fetchSockets();
       if (remainingSockets.length === 0) {
