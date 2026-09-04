@@ -698,9 +698,6 @@ const aiAssistant = require('./helpers/aiAssistant.helper');
 const app = express();
 const server = http.createServer(app);
 
-// -----------------------------------------------------------------------------
-// S3 CLIENT & MEDIA UPLOAD HELPER
-// -----------------------------------------------------------------------------
 const s3 = new S3Client({
   region: config.s3.region,
   credentials: {
@@ -761,9 +758,6 @@ async function uploadBase64ToS3(base64Payload, declaredFileType) {
   return { fileUrl, fileType: mimeType };
 }
 
-// -----------------------------------------------------------------------------
-// AUTHENTICATION UTILS
-// -----------------------------------------------------------------------------
 const verifyToken = (rawToken) => {
   if (!rawToken) return null;
   try {
@@ -780,9 +774,6 @@ const verifyToken = (rawToken) => {
   }
 };
 
-// -----------------------------------------------------------------------------
-// SOCKET SERVER & MIDDLEWARE
-// -----------------------------------------------------------------------------
 const io = socketIo(server, {
   cors: {
     origin: '*',
@@ -810,26 +801,21 @@ io.use((socket, next) => {
   }
 
   socket.userId = authUserId.toString();
-  socket.data.userId = authUserId.toString();
-  socket.data.activeChatRoomId = null;
+  socket.activeRoom = null;
   next();
 });
 
-// -----------------------------------------------------------------------------
-// CONNECTION LIFECYCLE & EVENT HANDLERS
-// -----------------------------------------------------------------------------
 io.on('connection', async (socket) => {
   const uid = socket.userId;
   const userRoom = `user_${uid}`;
 
   socket.join(userRoom);
-  socket.data.activeChatRoomId = null;
+  socket.activeRoom = null;
   console.log(`[Socket Connected] User ${uid} connected`);
 
   try {
     const connectedSockets = await io.in(userRoom).fetchSockets();
     if (connectedSockets.length === 1) {
-      console.log(`[Presence] User ${uid} is now ONLINE`);
       await User.findByIdAndUpdate(uid, { isOnline: true });
       io.emit('user_status_changed', { userId: uid, isOnline: true });
     }
@@ -837,21 +823,14 @@ io.on('connection', async (socket) => {
     console.error(`[Init User Error] User ${uid}:`, err.message);
   }
 
-  // Active Screen Presence: Only set when user is actively inside the chat screen
+  // Active Screen Presence: Only called when entering SupportChatPage
   socket.on('chat_opened', async ({ roomId }) => {
     if (!roomId) return;
     const cleanRoomId = roomId.toString();
-    socket.data.activeChatRoomId = cleanRoomId;
+    socket.activeRoom = cleanRoomId;
     socket.join(cleanRoomId);
 
     try {
-      const room = await ChatRoom.findById(cleanRoomId).lean();
-      if (!room) return;
-
-      const isHomeOwner = room.homeOwnerId?.toString() === uid;
-      const isPlumber = room.plumberId?.toString() === uid;
-      if (!isHomeOwner && !isPlumber) return;
-
       const updateResult = await Message.updateMany(
         { roomId: cleanRoomId, senderId: { $ne: uid }, read: false },
         { $set: { read: true } },
@@ -869,33 +848,25 @@ io.on('connection', async (socket) => {
     }
   });
 
+  // Explicit Screen Exit: Called on screen leave / dispose
   socket.on('chat_closed', ({ roomId } = {}) => {
-    const targetRoomId = roomId?.toString() || socket.data.activeChatRoomId;
+    const targetRoomId = roomId ? roomId.toString() : socket.activeRoom;
     if (targetRoomId) {
       socket.leave(targetRoomId);
     }
-    socket.data.activeChatRoomId = null;
+    socket.activeRoom = null;
   });
 
-  // Explicit Mark Read Event (only processes if client is in the room)
+  // Mark Read (must be active in that room)
   socket.on('mark_messages_read', async ({ roomId }) => {
     if (!roomId) return;
     const cleanRoomId = roomId.toString();
 
-    if (socket.data.activeChatRoomId !== cleanRoomId) {
+    if (socket.activeRoom !== cleanRoomId) {
       return;
     }
 
     try {
-      const room = await ChatRoom.findById(cleanRoomId).lean();
-      if (!room) return;
-      if (
-        room.homeOwnerId?.toString() !== uid &&
-        room.plumberId?.toString() !== uid
-      ) {
-        return;
-      }
-
       const updateResult = await Message.updateMany(
         { roomId: cleanRoomId, senderId: { $ne: uid }, read: false },
         { $set: { read: true } },
@@ -913,7 +884,7 @@ io.on('connection', async (socket) => {
     }
   });
 
-  // Join Room for data stream / history subscription
+  // Join Room: Data subscription only (does NOT mark read by default)
   socket.on('join_room', async ({ roomId, markAsRead }) => {
     if (!roomId) {
       return socket.emit('chat_error', { message: 'roomId is required.' });
@@ -937,9 +908,8 @@ io.on('connection', async (socket) => {
 
       socket.join(cleanRoomId);
 
-      // Only mark read if explicitly requested AND active presence is indicated
       if (markAsRead === true) {
-        socket.data.activeChatRoomId = cleanRoomId;
+        socket.activeRoom = cleanRoomId;
         const updateResult = await Message.updateMany(
           { roomId: cleanRoomId, senderId: { $ne: uid }, read: false },
           { $set: { read: true } },
@@ -1036,9 +1006,6 @@ io.on('connection', async (socket) => {
           }
 
           room = await ChatRoom.create({ _id: cleanRoomId, homeOwnerId, plumberId });
-
-          io.in(`user_${homeOwnerId}`).socketsJoin(cleanRoomId);
-          io.in(`user_${plumberId}`).socketsJoin(cleanRoomId);
         }
 
         const senderIdStr = uid.toString();
@@ -1063,7 +1030,7 @@ io.on('connection', async (socket) => {
           });
         }
 
-        // Handle Media
+        // Media processing
         let finalFileUrl = null;
         let finalFileType = fileType || null;
 
@@ -1101,13 +1068,10 @@ io.on('connection', async (socket) => {
           finalContent = finalFileUrl ? (isVideo ? 'Video' : 'Photo') : '';
         }
 
-        // Reliably verify if counterpart currently has an open socket viewing this room
-        const counterpartSockets = await io
-          .in(`user_${counterpartId}`)
-          .fetchSockets();
-
+        // Check if recipient is actively viewing this specific chat room
+        const counterpartSockets = await io.in(`user_${counterpartId}`).fetchSockets();
         const isCounterpartActiveInRoom = counterpartSockets.some(
-          (s) => s.data?.activeChatRoomId === cleanRoomId,
+          (s) => s.activeRoom === cleanRoomId,
         );
 
         const message = await Message.create({
@@ -1131,7 +1095,9 @@ io.on('connection', async (socket) => {
         );
         const messageJson = populatedMessage.toJSON();
 
+        // Emit message to room and user channels
         io.to(cleanRoomId).emit('new_message', messageJson);
+        io.to(`user_${counterpartId}`).emit('new_message', messageJson);
 
         io.to(`user_${counterpartId}`).emit('chat_notification', {
           roomId: cleanRoomId,
@@ -1139,6 +1105,7 @@ io.on('connection', async (socket) => {
           message: messageJson,
         });
 
+        // Push notification only sent when recipient is not currently viewing the room
         if (!isCounterpartActiveInRoom) {
           notificationService
             .sendToUsers(
@@ -1158,126 +1125,11 @@ io.on('connection', async (socket) => {
     },
   );
 
-  // Ask AI
-  socket.on('ask_ai', async ({ message, fileUrl, fileType, fileName }) => {
-    try {
-      if ((!message || !message.trim()) && !fileUrl) {
-        return socket.emit('ai_error', {
-          message: 'Please enter a question or upload a file.',
-        });
-      }
-
-      const user = await User.findById(uid, 'role').lean();
-      if (!user) {
-        return socket.emit('ai_error', { message: 'User not found.' });
-      }
-
-      let finalFileUrl = fileUrl || '';
-      let finalFileType = fileType || '';
-
-      if (fileUrl && !fileUrl.startsWith('http')) {
-        try {
-          const uploadResult = await uploadBase64ToS3(fileUrl, fileType);
-          finalFileUrl = uploadResult.fileUrl;
-          finalFileType = uploadResult.fileType;
-        } catch (e) {
-          console.error('[AI Base64 Upload Error]:', e.message);
-          return socket.emit('ai_error', {
-            message: 'Failed to upload media file to server.',
-          });
-        }
-      }
-
-      const isVideo =
-        (finalFileType && finalFileType.startsWith('video/')) ||
-        /\.(mp4|mov|quicktime|webm|m4v|3gp)$/i.test(
-          finalFileUrl || fileName || '',
-        );
-
-      const cleanMessage = message ? message.trim() : '';
-      const mediaContext = isVideo ? 'video' : finalFileUrl ? 'image' : null;
-
-      const { isWorkRelated, searchQuery } =
-        aiAssistant.isWorkRelatedQuestion(cleanMessage);
-
-      const effectiveIsWorkRelated = isWorkRelated || !!mediaContext;
-      const effectiveSearchQuery =
-        searchQuery ||
-        (mediaContext === 'image'
-          ? 'pipe leak repair'
-          : mediaContext === 'video'
-          ? 'plumbing repair tutorial'
-          : '');
-
-      let suggestedVideo = null;
-      let aiMessage = '';
-
-      if (effectiveIsWorkRelated) {
-        suggestedVideo = await aiAssistant.searchAiVideo(
-          effectiveSearchQuery,
-          user.role,
-        );
-
-        if (!suggestedVideo) {
-          suggestedVideo = await aiAssistant.searchYouTubeVideo(
-            effectiveSearchQuery,
-            effectiveIsWorkRelated,
-          );
-        }
-      }
-
-      aiMessage = await aiAssistant.generateAIAnswer(
-        cleanMessage,
-        effectiveIsWorkRelated,
-        mediaContext,
-        finalFileUrl,
-      );
-
-      const responsePayload = {
-        sender: 'ai',
-        message: aiMessage,
-        suggestedVideo,
-        fileUrl: finalFileUrl,
-        fileType: finalFileType,
-        fileName: fileName || '',
-      };
-
-      try {
-        await AiChat.create({
-          userId: uid,
-          message: cleanMessage || (isVideo ? 'Video' : 'Photo'),
-          response: aiMessage,
-          suggestedVideo,
-          fileUrl: finalFileUrl,
-          fileType: finalFileType,
-          fileName: fileName || '',
-        });
-      } catch (dbErr) {
-        console.error('[AI] AiChat save error (non-fatal):', dbErr.message);
-      }
-
-      if (socket.connected) {
-        socket.emit('ai_response', responsePayload);
-      }
-    } catch (err) {
-      console.error('[ask_ai Error]:', err.message);
-      if (socket.connected) {
-        socket.emit('ai_error', {
-          message: 'Failed to process AI assistant request.',
-        });
-      }
-    }
-  });
-
-  // Disconnect Handling
   socket.on('disconnect', async () => {
     try {
-      console.log(`[Socket Disconnected] User ${uid} disconnected`);
-      socket.data.activeChatRoomId = null;
-
+      socket.activeRoom = null;
       const remainingSockets = await io.in(userRoom).fetchSockets();
       if (remainingSockets.length === 0) {
-        console.log(`[Presence] User ${uid} is now OFFLINE`);
         await User.findByIdAndUpdate(uid, { isOnline: false });
         io.emit('user_status_changed', { userId: uid, isOnline: false });
       }
