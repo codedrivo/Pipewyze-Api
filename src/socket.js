@@ -1032,7 +1032,6 @@ io.on('connection', async (socket) => {
         });
       }
 
-      socket.activeRoom = cleanRoomId;
       socket.join(cleanRoomId);
 
       // Mark unread messages sent by counterpart as read when joining room
@@ -1229,10 +1228,10 @@ io.on('connection', async (socket) => {
           finalContent = finalFileUrl ? (isVideo ? 'Video' : 'Photo') : '';
         }
 
-        // Check if recipient is in this chat room screen (activeRoom or joined room socket)
+        // Check if recipient is actively viewing this specific chat room screen
         const counterpartSockets = await io.in(`user_${counterpartId}`).fetchSockets();
         const isCounterpartActiveInRoom = counterpartSockets.some(
-          (s) => s.activeRoom === cleanRoomId || s.rooms?.has(cleanRoomId),
+          (s) => s.activeRoom === cleanRoomId,
         );
 
         console.log(
