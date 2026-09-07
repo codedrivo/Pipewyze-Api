@@ -315,25 +315,45 @@ const getMyChatRooms = catchAsync(async (req, res) => {
     .limit(limit);
 
   const roomIds = roomsList.map((r) => r._id);
-  const unreadCountsAggr = await Message.aggregate([
-    {
-      $match: {
-        roomId: { $in: roomIds },
-        senderId: { $ne: new mongoose.Types.ObjectId(userId) },
-        read: false,
+  const [unreadCountsAggr, messageCountsAggr] = await Promise.all([
+    Message.aggregate([
+      {
+        $match: {
+          roomId: { $in: roomIds },
+          senderId: { $ne: new mongoose.Types.ObjectId(userId) },
+          read: false,
+        },
       },
-    },
-    {
-      $group: {
-        _id: '$roomId',
-        count: { $sum: 1 },
+      {
+        $group: {
+          _id: '$roomId',
+          count: { $sum: 1 },
+        },
       },
-    },
+    ]),
+    Message.aggregate([
+      {
+        $match: {
+          roomId: { $in: roomIds },
+        },
+      },
+      {
+        $group: {
+          _id: '$roomId',
+          count: { $sum: 1 },
+        },
+      },
+    ]),
   ]);
 
   const unreadCountsMap = {};
   unreadCountsAggr.forEach((item) => {
     unreadCountsMap[item._id.toString()] = item.count;
+  });
+
+  const messageCountsMap = {};
+  messageCountsAggr.forEach((item) => {
+    messageCountsMap[item._id.toString()] = item.count;
   });
 
   const formattedRooms = roomsList
@@ -349,14 +369,30 @@ const getMyChatRooms = catchAsync(async (req, res) => {
         participantUser = room.plumberId || room.homeOwnerId;
       }
 
+      const unreadCount = unreadCountsMap[room._id.toString()] || 0;
+      const messageCount = messageCountsMap[room._id.toString()] || 0;
+
       return {
         id: room._id,
-        unreadCount: unreadCountsMap[room._id.toString()] || 0,
+        _id: room._id,
+        roomId: room._id,
+        unreadCount,
+        unread_count: unreadCount,
+        unreadMessagesCount: unreadCount,
+        unread_messages_count: unreadCount,
+        messageCount,
+        message_count: messageCount,
+        totalMessages: messageCount,
+        total_messages: messageCount,
+        count: messageCount,
         participant: participantUser
           ? {
               id: participantUser._id,
+              _id: participantUser._id,
               name: participantUser.fullName || '',
+              fullName: participantUser.fullName || '',
               profileImageUrl: participantUser.profileimageurl || '',
+              profileimageurl: participantUser.profileimageurl || '',
               isOnline: participantUser.isOnline || false,
             }
           : null,
@@ -393,11 +429,28 @@ const getMyChatRooms = catchAsync(async (req, res) => {
       return content !== '' || hasFile;
     });
 
+  const totalUnreadCount = Object.values(unreadCountsMap).reduce(
+    (a, b) => a + b,
+    0,
+  );
+  const totalMessagesCount = Object.values(messageCountsMap).reduce(
+    (a, b) => a + b,
+    0,
+  );
+
   res.status(200).send({
     status: 200,
     message: 'Chat rooms retrieved successfully',
+    totalUnreadCount,
+    unreadCount: totalUnreadCount,
+    totalMessagesCount,
+    messageCount: totalMessagesCount,
     data: {
       rooms: formattedRooms,
+      totalUnreadCount,
+      unreadCount: totalUnreadCount,
+      totalMessagesCount,
+      messageCount: totalMessagesCount,
       pagination: {
         page,
         limit,
@@ -431,14 +484,75 @@ const getRoomMessages = catchAsync(async (req, res) => {
     throw new ApiError('Access denied to this chat room', 403);
   }
 
-  const messages = await Message.find({ roomId })
+  // Mark counterpart's messages in this room as read for recipient
+  const unreadMessages = await Message.find({
+    roomId,
+    senderId: { $ne: req.user._id },
+    read: false,
+  }).select('_id senderId');
+
+  if (unreadMessages.length > 0) {
+    await Message.updateMany(
+      { _id: { $in: unreadMessages.map((m) => m._id) } },
+      { $set: { read: true } },
+    );
+
+    // Notify sender sockets via global.io if connected
+    if (global.io) {
+      const senderIds = [
+        ...new Set(unreadMessages.map((m) => m.senderId.toString())),
+      ];
+      for (const senderId of senderIds) {
+        global.io.to(`user_${senderId}`).emit('messages_read', {
+          roomId: roomId.toString(),
+          readBy: userId,
+          read: true,
+        });
+      }
+      global.io.to(roomId.toString()).emit('messages_read', {
+        roomId: roomId.toString(),
+        readBy: userId,
+        read: true,
+      });
+    }
+  }
+
+  const rawMessages = await Message.find({ roomId })
     .sort({ createdAt: 1, _id: 1 })
     .populate('senderId', 'fullName profileimageurl')
     .lean();
 
+  const formattedMessages = rawMessages.map((msg) => {
+    const isRead = !!msg.read;
+    return {
+      ...msg,
+      id: msg._id,
+      read: isRead,
+      isRead,
+      is_read: isRead,
+      seen: isRead,
+      isSeen: isRead,
+      status: isRead ? 'read' : 'sent',
+    };
+  });
+
+  const total = formattedMessages.length;
+
   res.status(200).send({
+    status: 200,
     message: 'Messages retrieved successfully',
-    messages,
+    total,
+    count: total,
+    messageCount: total,
+    unreadCount: 0,
+    messages: formattedMessages,
+    data: {
+      messages: formattedMessages,
+      total,
+      count: total,
+      messageCount: total,
+      unreadCount: 0,
+    },
   });
 });
 

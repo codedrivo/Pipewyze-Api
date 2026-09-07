@@ -1,6 +1,7 @@
 const catchAsync = require('../../../helpers/asyncErrorHandler');
 const Equipment = require('../../../models/equipment.model');
 const User = require('../../../models/user.model');
+const moment = require('moment-timezone');
 
 const getDashboardSummary = catchAsync(async (req, res) => {
   const homeownerId = req.user._id;
@@ -10,10 +11,13 @@ const getDashboardSummary = catchAsync(async (req, res) => {
     ownerId: homeownerId,
   });
 
-  // 2. Get upcoming/near services/maintenance
+  const now = moment().startOf('day').toDate();
+  const targetDateEnd = moment().add(4, 'days').endOf('day').toDate();
+
+  // 2. Get upcoming/near services/maintenance (within 4 days)
   const upcomingServices = await Equipment.find({
     ownerId: homeownerId,
-    nextServiceDate: { $exists: true, $ne: null },
+    nextServiceDate: { $gte: now, $lte: targetDateEnd },
   })
     .sort({ nextServiceDate: 1 })
     .limit(5);
@@ -38,9 +42,12 @@ const getDashboardSummary = catchAsync(async (req, res) => {
 const getRecentReminder = catchAsync(async (req, res) => {
   const homeownerId = req.user._id;
 
+  const now = moment().startOf('day').toDate();
+  const targetDateEnd = moment().add(4, 'days').endOf('day').toDate();
+
   const reminders = await Equipment.find({
     ownerId: homeownerId,
-    nextServiceDate: { $exists: true, $ne: null },
+    nextServiceDate: { $gte: now, $lte: targetDateEnd },
   })
     .populate('plumberId', 'fullName email phone profileimageurl')
     .sort({ nextServiceDate: 1 });

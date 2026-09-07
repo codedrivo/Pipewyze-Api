@@ -24,8 +24,8 @@ mongoose.connect(config.mongoose.url).then(() => {
   cron.schedule('0 9 * * *', async () => {
     try {
       const Equipment = require('./models/equipment.model');
-      const targetDateStart = moment().add(3, 'days').startOf('day').toDate();
-      const targetDateEnd = moment().add(3, 'days').endOf('day').toDate();
+      const targetDateStart = moment().add(4, 'days').startOf('day').toDate();
+      const targetDateEnd = moment().add(4, 'days').endOf('day').toDate();
       const upcomingServices = await Equipment.find({
         nextServiceDate: {
           $gte: targetDateStart,
