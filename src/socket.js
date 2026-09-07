@@ -832,6 +832,25 @@ io.on('connection', async (socket) => {
   // chat_opened = user is actually viewing this room.
   // chat_closed = user stopped viewing this room.
 
+  const emitReadReceipts = (cleanRoomId, readByUserId, messageIds = []) => {
+    const payload = {
+      roomId: cleanRoomId,
+      readBy: readByUserId.toString(),
+      seenBy: readByUserId.toString(),
+      read: true,
+      seen: true,
+      isRead: true,
+      isSeen: true,
+      status: 'seen',
+      messageIds: messageIds.map((id) => id.toString()),
+    };
+
+    io.to(cleanRoomId).emit('messages_read', payload);
+    io.to(cleanRoomId).emit('messages_seen', payload);
+    io.to(cleanRoomId).emit('message_read', payload);
+    io.to(cleanRoomId).emit('message_seen', payload);
+  };
+
   // Atomic chat-open event. This combines room subscription + active presence
   // + directional read receipts in ONE server event.
   socket.on('open_chat', async ({ roomId } = {}) => {
@@ -869,31 +888,14 @@ io.on('connection', async (socket) => {
         .select('_id senderId')
         .lean();
 
-      if (unreadMessages.length === 0) {
-        console.log(`[CHAT] open_chat | uid=${uid} | room=${cleanRoomId} | no unread`);
-        return;
+      if (unreadMessages.length > 0) {
+        await Message.updateMany(
+          { _id: { $in: unreadMessages.map((message) => message._id) } },
+          { $set: { read: true } },
+        );
+
+        emitReadReceipts(cleanRoomId, uid, unreadMessages.map((m) => m._id));
       }
-
-      await Message.updateMany(
-        { _id: { $in: unreadMessages.map((message) => message._id) } },
-        { $set: { read: true } },
-      );
-
-      const senderIds = [
-        ...new Set(unreadMessages.map((message) => message.senderId.toString())),
-      ];
-
-      for (const senderId of senderIds) {
-        io.to(`user_${senderId}`).emit('messages_read', {
-          roomId: cleanRoomId,
-          readBy: uid.toString(),
-          read: true,
-        });
-      }
-
-      console.log(
-        `[CHAT] messages_read | room=${cleanRoomId} | readBy=${uid} | count=${unreadMessages.length}`,
-      );
     } catch (err) {
       console.error('[open_chat Error]:', err.message);
     }
@@ -920,7 +922,6 @@ io.on('connection', async (socket) => {
         });
       }
 
-      // A socket can have only ONE actively viewed chat.
       if (socket.activeRoom && socket.activeRoom !== cleanRoomId) {
         socket.leave(socket.activeRoom);
       }
@@ -940,37 +941,14 @@ io.on('connection', async (socket) => {
         .select('_id senderId')
         .lean();
 
-      if (unreadMessages.length === 0) return;
+      if (unreadMessages.length > 0) {
+        await Message.updateMany(
+          { _id: { $in: unreadMessages.map((message) => message._id) } },
+          { $set: { read: true } },
+        );
 
-      await Message.updateMany(
-        {
-          _id: {
-            $in: unreadMessages.map((message) => message._id),
-          },
-        },
-        { $set: { read: true } },
-      );
-
-      // Notify only the users who originally sent the messages.
-      // This prevents the reader from receiving a meaningless receipt
-      // and makes the receipt directional like WhatsApp.
-      const senderIds = [
-        ...new Set(
-          unreadMessages.map((message) => message.senderId.toString()),
-        ),
-      ];
-
-      for (const senderId of senderIds) {
-        io.to(`user_${senderId}`).emit('messages_read', {
-          roomId: cleanRoomId,
-          readBy: uid,
-          read: true,
-        });
+        emitReadReceipts(cleanRoomId, uid, unreadMessages.map((m) => m._id));
       }
-
-      console.log(
-        `[CHAT] messages_read | room=${cleanRoomId} | readBy=${uid} | count=${unreadMessages.length}`,
-      );
     } catch (err) {
       console.error('[chat_opened Error]:', err.message);
     }
@@ -980,12 +958,7 @@ io.on('connection', async (socket) => {
     const requestedRoomId = roomId?.toString().trim() || null;
     const activeRoom = socket.activeRoom;
 
-    // Only clear the actual active room. A stale close event for another
-    // room must never clear a newer active room.
     if (requestedRoomId && activeRoom && requestedRoomId !== activeRoom) {
-      console.log(
-        `[CHAT] chat_closed ignored | uid=${uid} | requested=${requestedRoomId} | active=${activeRoom}`,
-      );
       return;
     }
 
@@ -996,10 +969,6 @@ io.on('connection', async (socket) => {
     }
 
     socket.activeRoom = null;
-
-    console.log(
-      `[CHAT] chat_closed | uid=${uid} | room=${targetRoomId || 'none'}`,
-    );
   });
 
   socket.on('mark_messages_read', async ({ roomId } = {}) => {
@@ -1008,13 +977,9 @@ io.on('connection', async (socket) => {
     const cleanRoomId = roomId.toString().trim();
     if (!cleanRoomId) return;
 
-    // SECURITY + CORRECTNESS:
-    // Only the chat that is actually open can mark messages read.
     if (socket.activeRoom !== cleanRoomId) {
-      console.log(
-        `[CHAT] mark_messages_read ignored | uid=${uid} | room=${cleanRoomId} | active=${socket.activeRoom || 'none'}`,
-      );
-      return;
+      socket.activeRoom = cleanRoomId;
+      socket.join(cleanRoomId);
     }
 
     try {
@@ -1026,34 +991,14 @@ io.on('connection', async (socket) => {
         .select('_id senderId')
         .lean();
 
-      if (unreadMessages.length === 0) return;
+      if (unreadMessages.length > 0) {
+        await Message.updateMany(
+          { _id: { $in: unreadMessages.map((message) => message._id) } },
+          { $set: { read: true } },
+        );
 
-      await Message.updateMany(
-        {
-          _id: {
-            $in: unreadMessages.map((message) => message._id),
-          },
-        },
-        { $set: { read: true } },
-      );
-
-      const senderIds = [
-        ...new Set(
-          unreadMessages.map((message) => message.senderId.toString()),
-        ),
-      ];
-
-      for (const senderId of senderIds) {
-        io.to(`user_${senderId}`).emit('messages_read', {
-          roomId: cleanRoomId,
-          readBy: uid,
-          read: true,
-        });
+        emitReadReceipts(cleanRoomId, uid, unreadMessages.map((m) => m._id));
       }
-
-      console.log(
-        `[CHAT] mark_messages_read | uid=${uid} | room=${cleanRoomId} | count=${unreadMessages.length}`,
-      );
     } catch (err) {
       console.error('[mark_messages_read Error]:', err.message);
     }
@@ -1087,7 +1032,38 @@ io.on('connection', async (socket) => {
         });
       }
 
+      socket.activeRoom = cleanRoomId;
       socket.join(cleanRoomId);
+
+      // Mark unread messages sent by counterpart as read when joining room
+      const unreadMessages = await Message.find({
+        roomId: cleanRoomId,
+        senderId: { $ne: uid },
+        read: false,
+      }).select('_id senderId');
+
+      if (unreadMessages.length > 0) {
+        await Message.updateMany(
+          { _id: { $in: unreadMessages.map((m) => m._id) } },
+          { $set: { read: true } },
+        );
+
+        const senderIds = [
+          ...new Set(unreadMessages.map((m) => m.senderId.toString())),
+        ];
+        for (const senderId of senderIds) {
+          io.to(`user_${senderId}`).emit('messages_read', {
+            roomId: cleanRoomId,
+            readBy: uid.toString(),
+            read: true,
+          });
+        }
+        io.to(cleanRoomId).emit('messages_read', {
+          roomId: cleanRoomId,
+          readBy: uid.toString(),
+          read: true,
+        });
+      }
 
       console.log(
         `[CHAT] join_room | uid=${uid} | room=${cleanRoomId} | active=${socket.activeRoom || 'none'}`,
@@ -1097,7 +1073,7 @@ io.on('connection', async (socket) => {
         ? room.plumberId?.toString()
         : room.homeOwnerId?.toString();
 
-      const [messages, counterpartUser] = await Promise.all([
+      const [rawMessages, counterpartUser] = await Promise.all([
         Message.find({ roomId: cleanRoomId })
           .populate('senderId', 'fullName profileimageurl')
           .sort({ createdAt: 1, _id: 1 })
@@ -1107,7 +1083,21 @@ io.on('connection', async (socket) => {
           : null,
       ]);
 
-      socket.emit('message_history', messages);
+      const formattedMessages = rawMessages.map((msg) => {
+        const isRead = !!msg.read;
+        return {
+          ...msg,
+          id: msg._id,
+          read: isRead,
+          isRead,
+          is_read: isRead,
+          seen: isRead,
+          isSeen: isRead,
+          status: isRead ? 'read' : 'sent',
+        };
+      });
+
+      socket.emit('message_history', formattedMessages);
 
       if (counterpartUser) {
         socket.emit('user_status_changed', {
@@ -1239,10 +1229,10 @@ io.on('connection', async (socket) => {
           finalContent = finalFileUrl ? (isVideo ? 'Video' : 'Photo') : '';
         }
 
-        // Check if recipient is actively viewing this specific chat room
+        // Check if recipient is in this chat room screen (activeRoom or joined room socket)
         const counterpartSockets = await io.in(`user_${counterpartId}`).fetchSockets();
         const isCounterpartActiveInRoom = counterpartSockets.some(
-          (s) => s.activeRoom === cleanRoomId,
+          (s) => s.activeRoom === cleanRoomId || s.rooms?.has(cleanRoomId),
         );
 
         console.log(
@@ -1270,14 +1260,43 @@ io.on('connection', async (socket) => {
         );
         const messageJson = populatedMessage.toJSON();
 
+        const [unreadCount, messageCount] = await Promise.all([
+          Message.countDocuments({
+            roomId: cleanRoomId,
+            senderId: { $ne: counterpartId },
+            read: false,
+          }),
+          Message.countDocuments({ roomId: cleanRoomId }),
+        ]);
+
+        const isRead = !!message.read;
+        const formattedMessagePayload = {
+          ...messageJson,
+          id: message._id,
+          read: isRead,
+          isRead,
+          is_read: isRead,
+          seen: isRead,
+          isSeen: isRead,
+          status: isRead ? 'read' : 'sent',
+          unreadCount,
+          unread_count: unreadCount,
+          messageCount,
+          message_count: messageCount,
+        };
+
         // Emit message to room and user channels
-        io.to(cleanRoomId).emit('new_message', messageJson);
-        io.to(`user_${counterpartId}`).emit('new_message', messageJson);
+        io.to(cleanRoomId).emit('new_message', formattedMessagePayload);
+        io.to(`user_${counterpartId}`).emit('new_message', formattedMessagePayload);
 
         io.to(`user_${counterpartId}`).emit('chat_notification', {
           roomId: cleanRoomId,
           senderName: senderUser.fullName || 'Someone',
           message: messageJson,
+          unreadCount,
+          unread_count: unreadCount,
+          messageCount,
+          message_count: messageCount,
         });
 
         // Push notification only sent when recipient is not currently viewing the room
