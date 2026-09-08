@@ -251,6 +251,8 @@ const initChatRoom = catchAsync(async (req, res) => {
   const { plumberId } = req.body;
   const homeOwnerId = req.user._id;
 
+  console.log(`[CHAT REST] POST /v1/chat/rooms/init | uid=${homeOwnerId} | plumberId=${plumberId}`);
+
   if (req.user.role !== 'home-owner') {
     throw new ApiError('Only homeowners can initiate chats with plumbers', 400);
   }
@@ -284,8 +286,10 @@ const initChatRoom = catchAsync(async (req, res) => {
  * Get all chat rooms for the logged-in user
  */
 const getMyChatRooms = catchAsync(async (req, res) => {
-  const userId = req.user._id;
+  const userId = req.user._id.toString();
   const role = req.user.role;
+
+  console.log(`[CHAT REST] GET /v1/chat/rooms | uid=${userId} | role=${role} | page=${req.query.page || 1}`);
 
   let query = { lastMessage: { $exists: true, $ne: null } };
   if (role === 'home-owner') {
@@ -475,6 +479,9 @@ const getRoomMessages = catchAsync(async (req, res) => {
   const { roomId } = req.params;
   const userId = req.user._id.toString();
   const role = req.user.role;
+  const shouldMarkAsRead = req.query.markAsRead !== 'false' && req.query.mark_read !== 'false';
+
+  console.log(`[CHAT REST] GET /v1/chat/rooms/${roomId}/messages | uid=${userId} | markAsRead=${shouldMarkAsRead}`);
 
   const room = await ChatRoom.findById(roomId);
   if (!room) {
@@ -492,8 +499,6 @@ const getRoomMessages = catchAsync(async (req, res) => {
 
   // Only mark counterpart's messages in this room as read if markAsRead query param is set (or true by default for chat detail screen)
   // If the mobile app fetches messages merely for inbox previews, pass ?markAsRead=false to prevent marking as read.
-  const shouldMarkAsRead = req.query.markAsRead !== 'false' && req.query.mark_read !== 'false';
-
   if (shouldMarkAsRead) {
     const unreadMessages = await Message.find({
       roomId,
@@ -578,7 +583,7 @@ const uploadChatMedia = catchAsync(async (req, res) => {
     throw new ApiError('Please upload a video or photo file', 400);
   }
 
-  console.log('Chat media file uploaded successfully:', {
+  console.log('[CHAT REST] Chat media file uploaded successfully:', {
     name: req.file.originalname,
     type: req.file.mimetype,
     url: req.file.location,
