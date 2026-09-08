@@ -514,21 +514,32 @@ const getRoomMessages = catchAsync(async (req, res) => {
 
       // Notify sender sockets via global.io if connected
       if (global.io) {
+        const messageIds = unreadMessages.map((m) => m._id.toString());
+        const payload = {
+          roomId: roomId.toString(),
+          readBy: userId,
+          seenBy: userId,
+          read: true,
+          seen: true,
+          isRead: true,
+          isSeen: true,
+          status: 'seen',
+          messageIds,
+        };
+
         const senderIds = [
           ...new Set(unreadMessages.map((m) => m.senderId.toString())),
         ];
         for (const senderId of senderIds) {
-          global.io.to(`user_${senderId}`).emit('messages_read', {
-            roomId: roomId.toString(),
-            readBy: userId,
-            read: true,
-          });
+          global.io.to(`user_${senderId}`).emit('messages_read', payload);
+          global.io.to(`user_${senderId}`).emit('messages_seen', payload);
+          global.io.to(`user_${senderId}`).emit('message_read', payload);
+          global.io.to(`user_${senderId}`).emit('message_seen', payload);
         }
-        global.io.to(roomId.toString()).emit('messages_read', {
-          roomId: roomId.toString(),
-          readBy: userId,
-          read: true,
-        });
+        global.io.to(roomId.toString()).emit('messages_read', payload);
+        global.io.to(roomId.toString()).emit('messages_seen', payload);
+        global.io.to(roomId.toString()).emit('message_read', payload);
+        global.io.to(roomId.toString()).emit('message_seen', payload);
       }
     }
   }
