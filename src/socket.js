@@ -1216,9 +1216,19 @@ io.on('connection', async (socket) => {
           (s) => s.activeRoom === cleanRoomId,
         );
 
+        const roomObjId = mongoose.Types.ObjectId.isValid(cleanRoomId)
+          ? new mongoose.Types.ObjectId(cleanRoomId)
+          : cleanRoomId;
+        const senderObjId = mongoose.Types.ObjectId.isValid(uid)
+          ? new mongoose.Types.ObjectId(uid)
+          : uid;
+        const counterpartObjId = mongoose.Types.ObjectId.isValid(counterpartId)
+          ? new mongoose.Types.ObjectId(counterpartId)
+          : counterpartId;
+
         const message = await Message.create({
-          roomId: cleanRoomId,
-          senderId: uid,
+          roomId: roomObjId,
+          senderId: senderObjId,
           content: finalContent || (isVideo ? 'Video' : 'Photo'),
           fileUrl: finalFileUrl,
           fileType: finalFileType,
@@ -1237,17 +1247,19 @@ io.on('connection', async (socket) => {
         );
         const messageJson = populatedMessage.toJSON();
 
-        const [unreadCount, messageCount] = await Promise.all([
+        const [counterpartUnreadCount, messageCount] = await Promise.all([
           Message.countDocuments({
-            roomId: cleanRoomId,
-            senderId: { $ne: counterpartId },
+            roomId: roomObjId,
+            senderId: senderObjId,
             read: false,
           }),
-          Message.countDocuments({ roomId: cleanRoomId }),
+          Message.countDocuments({ roomId: roomObjId }),
         ]);
 
         const isRead = !!message.read;
-        const formattedMessagePayload = {
+
+        // Base payload without recipient-specific unreadCount
+        const basePayload = {
           ...messageJson,
           id: message._id,
           read: isRead,
@@ -1256,18 +1268,33 @@ io.on('connection', async (socket) => {
           seen: isRead,
           isSeen: isRead,
           status: isRead ? 'read' : 'sent',
-          unreadCount,
-          unread_count: unreadCount,
           messageCount,
           message_count: messageCount,
         };
 
+        // Recipient payload includes their unreadCount
+        const recipientPayload = {
+          ...basePayload,
+          unreadCount: counterpartUnreadCount,
+          unread_count: counterpartUnreadCount,
+        };
+
+        // Sender payload has unreadCount: 0 for their own sent conversation
+        const senderPayload = {
+          ...basePayload,
+          unreadCount: 0,
+          unread_count: 0,
+        };
+
         console.log(`[SOCKET RECV] send_message | sender=${uid} | room=${cleanRoomId} | recipient=${counterpartId} | recipientActive=${isCounterpartActiveInRoom}`);
 
-        // Emit message to room and user channels
+        // Emit message to sender and recipient channels
         console.log(`[SOCKET EMIT] new_message | room=${cleanRoomId} | sender=${uid} | isRead=${isRead}`);
-        io.to(cleanRoomId).emit('new_message', formattedMessagePayload);
-        io.to(`user_${counterpartId}`).emit('new_message', formattedMessagePayload);
+        io.to(`user_${uid}`).emit('new_message', senderPayload);
+        io.to(`user_${counterpartId}`).emit('new_message', recipientPayload);
+
+        // Emit to room (excluding current sender socket to prevent duplicate badge counts)
+        socket.to(cleanRoomId).emit('new_message', recipientPayload);
 
         if (isCounterpartActiveInRoom) {
           emitReadReceipts(cleanRoomId, counterpartId, [message._id]);
@@ -1277,8 +1304,8 @@ io.on('connection', async (socket) => {
           roomId: cleanRoomId,
           senderName: senderUser.fullName || 'Someone',
           message: messageJson,
-          unreadCount,
-          unread_count: unreadCount,
+          unreadCount: counterpartUnreadCount,
+          unread_count: counterpartUnreadCount,
           messageCount,
           message_count: messageCount,
         });
