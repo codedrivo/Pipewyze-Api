@@ -50,18 +50,6 @@ const getMyChatRooms = catchAsync(async (req, res) => {
   const userId = req.user._id.toString();
   const role = req.user.role;
 
-  // Reset activeRoom for all user sockets since fetching inbox indicates user is in the rooms list, not inside a specific chat room
-  if (global.io) {
-    try {
-      const userSockets = await global.io.in(`user_${userId}`).fetchSockets();
-      userSockets.forEach((s) => {
-        s.activeRoom = null;
-      });
-    } catch (err) {
-      // Ignore socket lookup error
-    }
-  }
-
   let query = { lastMessage: { $exists: true, $ne: null } };
   if (role === 'home-owner') {
     query.homeOwnerId = userId;
@@ -267,7 +255,11 @@ const getRoomMessages = catchAsync(async (req, res) => {
   const { roomId } = req.params;
   const userId = req.user._id.toString();
   const role = req.user.role;
-  const shouldMarkAsRead = req.query.markAsRead === 'true' || req.query.mark_read === 'true';
+  const shouldMarkAsRead =
+    req.query.markAsRead !== 'false' &&
+    req.query.markAsRead !== false &&
+    req.query.mark_read !== 'false' &&
+    req.query.mark_read !== false;
 
   console.log(`[CHAT REST] GET /v1/chat/rooms/${roomId}/messages | uid=${userId} | markAsRead=${shouldMarkAsRead}`);
 
@@ -285,23 +277,33 @@ const getRoomMessages = catchAsync(async (req, res) => {
     throw new ApiError('Access denied to this chat room', 403);
   }
 
-  // Mark counterpart's messages in this room as read only when explicitly requested (markAsRead=true)
+  const roomObjId = mongoose.Types.ObjectId.isValid(roomId)
+    ? new mongoose.Types.ObjectId(roomId)
+    : roomId;
+  const userObjId = mongoose.Types.ObjectId.isValid(userId)
+    ? new mongoose.Types.ObjectId(userId)
+    : userId;
+
+  const roomIdsFilter = Array.from(new Set([roomObjId, roomId.toString()]));
+  const senderIdsFilter = Array.from(new Set([userObjId, userId.toString()]));
+
+  // Mark counterpart's messages in this room as read unless markAsRead=false is explicitly requested
   if (shouldMarkAsRead) {
     const unreadMessages = await Message.find({
-      roomId,
-      senderId: { $ne: req.user._id },
-      read: false,
+      roomId: { $in: roomIdsFilter },
+      senderId: { $nin: senderIdsFilter },
+      read: { $ne: true },
     }).select('_id senderId');
 
     if (unreadMessages.length > 0) {
+      const messageIds = unreadMessages.map((m) => m._id);
       await Message.updateMany(
-        { _id: { $in: unreadMessages.map((m) => m._id) } },
-        { $set: { read: true } },
+        { _id: { $in: messageIds } },
+        { $set: { read: true, status: 'seen' } },
       );
 
       // Notify sender sockets via global.io if connected
       if (global.io) {
-        const messageIds = unreadMessages.map((m) => m._id.toString());
         const payload = {
           roomId: roomId.toString(),
           readBy: userId,
@@ -311,7 +313,7 @@ const getRoomMessages = catchAsync(async (req, res) => {
           isRead: true,
           isSeen: true,
           status: 'seen',
-          messageIds,
+          messageIds: messageIds.map((id) => id.toString()),
         };
 
         const senderIds = [
@@ -327,11 +329,17 @@ const getRoomMessages = catchAsync(async (req, res) => {
         global.io.to(roomId.toString()).emit('messages_seen', payload);
         global.io.to(roomId.toString()).emit('message_read', payload);
         global.io.to(roomId.toString()).emit('message_seen', payload);
+
+        global.io.to(`user_${userId}`).emit('unread_count_updated', {
+          roomId: roomId.toString(),
+          unreadCount: 0,
+          unread_count: 0,
+        });
       }
     }
   }
 
-  const rawMessages = await Message.find({ roomId })
+  const rawMessages = await Message.find({ roomId: { $in: roomIdsFilter } })
     .sort({ createdAt: 1, _id: 1 })
     .populate('senderId', 'fullName profileimageurl')
     .lean();
