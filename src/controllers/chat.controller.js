@@ -490,36 +490,41 @@ const getRoomMessages = catchAsync(async (req, res) => {
     throw new ApiError('Access denied to this chat room', 403);
   }
 
-  // Mark counterpart's messages in this room as read for recipient
-  const unreadMessages = await Message.find({
-    roomId,
-    senderId: { $ne: req.user._id },
-    read: false,
-  }).select('_id senderId');
+  // Only mark counterpart's messages in this room as read if markAsRead query param is set (or true by default for chat detail screen)
+  // If the mobile app fetches messages merely for inbox previews, pass ?markAsRead=false to prevent marking as read.
+  const shouldMarkAsRead = req.query.markAsRead !== 'false' && req.query.mark_read !== 'false';
 
-  if (unreadMessages.length > 0) {
-    await Message.updateMany(
-      { _id: { $in: unreadMessages.map((m) => m._id) } },
-      { $set: { read: true } },
-    );
+  if (shouldMarkAsRead) {
+    const unreadMessages = await Message.find({
+      roomId,
+      senderId: { $ne: req.user._id },
+      read: false,
+    }).select('_id senderId');
 
-    // Notify sender sockets via global.io if connected
-    if (global.io) {
-      const senderIds = [
-        ...new Set(unreadMessages.map((m) => m.senderId.toString())),
-      ];
-      for (const senderId of senderIds) {
-        global.io.to(`user_${senderId}`).emit('messages_read', {
+    if (unreadMessages.length > 0) {
+      await Message.updateMany(
+        { _id: { $in: unreadMessages.map((m) => m._id) } },
+        { $set: { read: true } },
+      );
+
+      // Notify sender sockets via global.io if connected
+      if (global.io) {
+        const senderIds = [
+          ...new Set(unreadMessages.map((m) => m.senderId.toString())),
+        ];
+        for (const senderId of senderIds) {
+          global.io.to(`user_${senderId}`).emit('messages_read', {
+            roomId: roomId.toString(),
+            readBy: userId,
+            read: true,
+          });
+        }
+        global.io.to(roomId.toString()).emit('messages_read', {
           roomId: roomId.toString(),
           readBy: userId,
           read: true,
         });
       }
-      global.io.to(roomId.toString()).emit('messages_read', {
-        roomId: roomId.toString(),
-        readBy: userId,
-        read: true,
-      });
     }
   }
 
@@ -543,6 +548,9 @@ const getRoomMessages = catchAsync(async (req, res) => {
   });
 
   const total = formattedMessages.length;
+  const unreadCount = formattedMessages.filter(
+    (m) => m.senderId && m.senderId._id.toString() !== userId && !m.read
+  ).length;
 
   res.status(200).send({
     status: 200,
@@ -550,14 +558,14 @@ const getRoomMessages = catchAsync(async (req, res) => {
     total,
     count: total,
     messageCount: total,
-    unreadCount: 0,
+    unreadCount,
     messages: formattedMessages,
     data: {
       messages: formattedMessages,
       total,
       count: total,
       messageCount: total,
-      unreadCount: 0,
+      unreadCount,
     },
   });
 });
