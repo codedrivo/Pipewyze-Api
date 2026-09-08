@@ -978,8 +978,10 @@ io.on('connection', async (socket) => {
     if (!cleanRoomId) return;
 
     if (socket.activeRoom !== cleanRoomId) {
-      socket.activeRoom = cleanRoomId;
-      socket.join(cleanRoomId);
+      console.log(
+        `[CHAT] Ignoring mark_messages_read - room is not active: ${cleanRoomId}`,
+      );
+      return;
     }
 
     try {
@@ -1033,36 +1035,6 @@ io.on('connection', async (socket) => {
       }
 
       socket.join(cleanRoomId);
-
-      // // Mark unread messages sent by counterpart as read when joining room
-      // const unreadMessages = await Message.find({
-      //   roomId: cleanRoomId,
-      //   senderId: { $ne: uid },
-      //   read: false,
-      // }).select('_id senderId');
-      //
-      // if (unreadMessages.length > 0) {
-      //   await Message.updateMany(
-      //     { _id: { $in: unreadMessages.map((m) => m._id) } },
-      //     { $set: { read: true } },
-      //   );
-      //
-      //   const senderIds = [
-      //     ...new Set(unreadMessages.map((m) => m.senderId.toString())),
-      //   ];
-      //   for (const senderId of senderIds) {
-      //     io.to(`user_${senderId}`).emit('messages_read', {
-      //       roomId: cleanRoomId,
-      //       readBy: uid.toString(),
-      //       read: true,
-      //     });
-      //   }
-      //   io.to(cleanRoomId).emit('messages_read', {
-      //     roomId: cleanRoomId,
-      //     readBy: uid.toString(),
-      //     read: true,
-      //   });
-      // }
 
       console.log(
         `[CHAT] join_room | uid=${uid} | room=${cleanRoomId} | active=${socket.activeRoom || 'none'}`,
