@@ -854,7 +854,10 @@ io.on('connection', async (socket) => {
   // Atomic chat-open event. This combines room subscription + active presence
   // + directional read receipts in ONE server event.
   socket.on('open_chat', async ({ roomId } = {}) => {
-    if (!roomId) return;
+    if (!roomId) {
+      console.warn(`[CHAT WARN] open_chat missing roomId | uid=${uid}`);
+      return;
+    }
 
     const cleanRoomId = roomId.toString().trim();
     if (!cleanRoomId) return;
@@ -862,12 +865,14 @@ io.on('connection', async (socket) => {
     try {
       const room = await ChatRoom.findById(cleanRoomId).lean();
       if (!room) {
+        console.warn(`[CHAT WARN] open_chat room not found | uid=${uid} | room=${cleanRoomId}`);
         return socket.emit('chat_error', { message: 'Chat room not found.' });
       }
 
       const isHomeOwner = room.homeOwnerId?.toString() === uid;
       const isPlumber = room.plumberId?.toString() === uid;
       if (!isHomeOwner && !isPlumber) {
+        console.warn(`[CHAT WARN] open_chat unauthorized | uid=${uid} | room=${cleanRoomId}`);
         return socket.emit('chat_error', { message: 'Unauthorized room access.' });
       }
 
@@ -897,7 +902,7 @@ io.on('connection', async (socket) => {
         emitReadReceipts(cleanRoomId, uid, unreadMessages.map((m) => m._id));
       }
     } catch (err) {
-      console.error('[open_chat Error]:', err.message);
+      console.error(`[CHAT ERROR] open_chat exception | uid=${uid} | room=${cleanRoomId}:`, err);
     }
   });
 
@@ -969,6 +974,7 @@ io.on('connection', async (socket) => {
     }
 
     socket.activeRoom = null;
+    console.log(`[CHAT] chat_closed | uid=${uid} | room=${targetRoomId || 'none'}`);
   });
 
   socket.on('mark_messages_read', async ({ roomId } = {}) => {
@@ -1090,6 +1096,7 @@ io.on('connection', async (socket) => {
     async ({ roomId, receiverId, content, fileUrl, fileType, fileName }) => {
       try {
         if (!roomId || (!content && !fileUrl)) {
+          console.warn(`[CHAT WARN] send_message missing roomId or payload | uid=${uid} | roomId=${roomId}`);
           return socket.emit('chat_error', {
             message: 'Missing roomId or message payload.',
           });
@@ -1102,11 +1109,13 @@ io.on('connection', async (socket) => {
         ]);
 
         if (!senderUser) {
+          console.warn(`[CHAT WARN] send_message sender not found | uid=${uid}`);
           return socket.emit('chat_error', { message: 'Sender not found.' });
         }
 
         if (!room) {
           if (!receiverId) {
+            console.warn(`[CHAT WARN] send_message room not found & no receiverId | uid=${uid} | room=${cleanRoomId}`);
             return socket.emit('chat_error', {
               message: 'receiverId is required when creating a new chat room.',
             });
@@ -1114,6 +1123,7 @@ io.on('connection', async (socket) => {
 
           const receiver = await User.findById(receiverId, 'role').lean();
           if (!receiver) {
+            console.warn(`[CHAT WARN] send_message receiver not found | uid=${uid} | receiverId=${receiverId}`);
             return socket.emit('chat_error', {
               message: 'Receiver not found.',
             });
@@ -1132,6 +1142,7 @@ io.on('connection', async (socket) => {
             homeOwnerId = uid;
             plumberId = receiverId.toString();
           } else {
+            console.warn(`[CHAT WARN] send_message invalid participants | uid=${uid} (${senderUser.role}) | receiverId=${receiverId} (${receiver.role})`);
             return socket.emit('chat_error', {
               message: 'Invalid chat participants.',
             });
@@ -1151,12 +1162,14 @@ io.on('connection', async (socket) => {
         } else if (senderIdStr === plumberIdStr) {
           counterpartId = homeOwnerIdStr;
         } else {
+          console.warn(`[CHAT WARN] send_message unauthorized participant | uid=${uid} | room=${cleanRoomId}`);
           return socket.emit('chat_error', {
             message: 'Unauthorized action. You are not a participant of this chat room.',
           });
         }
 
         if (!counterpartId) {
+          console.warn(`[CHAT WARN] send_message no counterpart found | uid=${uid} | room=${cleanRoomId}`);
           return socket.emit('chat_error', {
             message: 'Chat room does not have a valid counterpart.',
           });
@@ -1284,7 +1297,7 @@ io.on('connection', async (socket) => {
             );
         }
       } catch (error) {
-        console.error('[send_message Error]:', error.message);
+        console.error(`[CHAT ERROR] send_message exception | uid=${uid} | room=${roomId}:`, error);
         socket.emit('chat_error', { message: 'Failed to send message.' });
       }
     },
@@ -1292,6 +1305,7 @@ io.on('connection', async (socket) => {
 
   socket.on('disconnect', async () => {
     try {
+      console.log(`[Socket Disconnected] User ${uid} disconnected`);
       socket.activeRoom = null;
       const remainingSockets = await io.in(userRoom).fetchSockets();
       if (remainingSockets.length === 0) {
