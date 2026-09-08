@@ -328,30 +328,30 @@ const getMyChatRooms = catchAsync(async (req, res) => {
     .skip(skip)
     .limit(limit);
 
-  const matchRoomIds = [];
-  roomsList.forEach((r) => {
-    if (r._id) {
-      const strId = r._id.toString();
-      matchRoomIds.push(strId);
-      if (mongoose.Types.ObjectId.isValid(strId)) {
-        matchRoomIds.push(new mongoose.Types.ObjectId(strId));
-      }
-    }
-  });
+  const roomObjectIds = roomsList
+    .map((r) => r._id)
+    .filter((id) => mongoose.Types.ObjectId.isValid(id))
+    .map((id) => new mongoose.Types.ObjectId(id.toString()));
 
-  const userObjectId = mongoose.Types.ObjectId.isValid(userId)
-    ? new mongoose.Types.ObjectId(userId)
+  const currentUserObjectId = mongoose.Types.ObjectId.isValid(userId)
+    ? new mongoose.Types.ObjectId(userId.toString())
     : null;
-  const userSenderMatch = userObjectId
-    ? { $nin: [userId, userObjectId] }
-    : { $ne: userId };
+
+  const roomIdsFilter = [
+    ...roomObjectIds,
+    ...roomsList.map((r) => r._id.toString()),
+  ];
+
+  const senderFilter = currentUserObjectId
+    ? { $nin: [currentUserObjectId, userId.toString()] }
+    : { $ne: userId.toString() };
 
   const [unreadCountsAggr, messageCountsAggr] = await Promise.all([
     Message.aggregate([
       {
         $match: {
-          roomId: { $in: matchRoomIds },
-          senderId: userSenderMatch,
+          roomId: { $in: roomIdsFilter },
+          senderId: senderFilter,
           read: false,
         },
       },
@@ -365,7 +365,7 @@ const getMyChatRooms = catchAsync(async (req, res) => {
     Message.aggregate([
       {
         $match: {
-          roomId: { $in: matchRoomIds },
+          roomId: { $in: roomIdsFilter },
         },
       },
       {
@@ -404,8 +404,9 @@ const getMyChatRooms = catchAsync(async (req, res) => {
         participantUser = room.plumberId || room.homeOwnerId;
       }
 
-      const unreadCount = unreadCountsMap[room._id.toString()] || 0;
-      const messageCount = messageCountsMap[room._id.toString()] || 0;
+      const roomIdStr = room._id.toString();
+      const unreadCount = unreadCountsMap[roomIdStr] || 0;
+      const messageCount = messageCountsMap[roomIdStr] || 0;
 
       return {
         id: room._id,
