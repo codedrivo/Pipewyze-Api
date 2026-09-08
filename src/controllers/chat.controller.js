@@ -479,7 +479,7 @@ const getRoomMessages = catchAsync(async (req, res) => {
   const { roomId } = req.params;
   const userId = req.user._id.toString();
   const role = req.user.role;
-  const shouldMarkAsRead = req.query.markAsRead !== 'false' && req.query.mark_read !== 'false';
+  const shouldMarkAsRead = req.query.markAsRead === 'true' || req.query.mark_read === 'true';
 
   console.log(`[CHAT REST] GET /v1/chat/rooms/${roomId}/messages | uid=${userId} | markAsRead=${shouldMarkAsRead}`);
 
@@ -497,8 +497,8 @@ const getRoomMessages = catchAsync(async (req, res) => {
     throw new ApiError('Access denied to this chat room', 403);
   }
 
-  // Only mark counterpart's messages in this room as read if markAsRead query param is set (or true by default for chat detail screen)
-  // If the mobile app fetches messages merely for inbox previews, pass ?markAsRead=false to prevent marking as read.
+  // Only mark counterpart's messages in this room as read if markAsRead=true query param is explicitly passed
+  // If the mobile app fetches messages merely for inbox previews or initial screen load, pass ?markAsRead=true only when actually viewing detail.
   if (shouldMarkAsRead) {
     const unreadMessages = await Message.find({
       roomId,

@@ -883,7 +883,7 @@ io.on('connection', async (socket) => {
       socket.activeRoom = cleanRoomId;
       socket.join(cleanRoomId);
 
-      const shouldMark = markAsRead !== false && markAsRead !== 'false';
+      const shouldMark = markAsRead === true || markAsRead === 'true';
       console.log(`[CHAT] open_chat | uid=${uid} | room=${cleanRoomId} | markAsRead=${shouldMark}`);
 
       if (shouldMark) {
@@ -937,7 +937,7 @@ io.on('connection', async (socket) => {
       socket.activeRoom = cleanRoomId;
       socket.join(cleanRoomId);
 
-      const shouldMark = markAsRead !== false && markAsRead !== 'false';
+      const shouldMark = markAsRead === true || markAsRead === 'true';
       console.log(
         `[CHAT] chat_opened | uid=${uid} | room=${cleanRoomId} | markAsRead=${shouldMark}`,
       );
@@ -1278,6 +1278,10 @@ io.on('connection', async (socket) => {
         // Emit message to room and user channels
         io.to(cleanRoomId).emit('new_message', formattedMessagePayload);
         io.to(`user_${counterpartId}`).emit('new_message', formattedMessagePayload);
+
+        if (isCounterpartActiveInRoom) {
+          emitReadReceipts(cleanRoomId, counterpartId, [message._id]);
+        }
 
         io.to(`user_${counterpartId}`).emit('chat_notification', {
           roomId: cleanRoomId,
