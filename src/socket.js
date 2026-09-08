@@ -853,7 +853,7 @@ io.on('connection', async (socket) => {
 
   // Atomic chat-open event. This combines room subscription + active presence
   // + directional read receipts in ONE server event.
-  socket.on('open_chat', async ({ roomId } = {}) => {
+  socket.on('open_chat', async ({ roomId, markAsRead } = {}) => {
     if (!roomId) {
       console.warn(`[CHAT WARN] open_chat missing roomId | uid=${uid}`);
       return;
@@ -883,30 +883,32 @@ io.on('connection', async (socket) => {
       socket.activeRoom = cleanRoomId;
       socket.join(cleanRoomId);
 
-      console.log(`[CHAT] open_chat | uid=${uid} | room=${cleanRoomId}`);
+      console.log(`[CHAT] open_chat | uid=${uid} | room=${cleanRoomId} | markAsRead=${!!markAsRead}`);
 
-      const unreadMessages = await Message.find({
-        roomId: cleanRoomId,
-        senderId: { $ne: uid },
-        read: false,
-      })
-        .select('_id senderId')
-        .lean();
+      if (markAsRead === true) {
+        const unreadMessages = await Message.find({
+          roomId: cleanRoomId,
+          senderId: { $ne: uid },
+          read: false,
+        })
+          .select('_id senderId')
+          .lean();
 
-      if (unreadMessages.length > 0) {
-        await Message.updateMany(
-          { _id: { $in: unreadMessages.map((message) => message._id) } },
-          { $set: { read: true } },
-        );
+        if (unreadMessages.length > 0) {
+          await Message.updateMany(
+            { _id: { $in: unreadMessages.map((message) => message._id) } },
+            { $set: { read: true } },
+          );
 
-        emitReadReceipts(cleanRoomId, uid, unreadMessages.map((m) => m._id));
+          emitReadReceipts(cleanRoomId, uid, unreadMessages.map((m) => m._id));
+        }
       }
     } catch (err) {
       console.error(`[CHAT ERROR] open_chat exception | uid=${uid} | room=${cleanRoomId}:`, err);
     }
   });
 
-  socket.on('chat_opened', async ({ roomId } = {}) => {
+  socket.on('chat_opened', async ({ roomId, markAsRead } = {}) => {
     if (!roomId) return;
 
     const cleanRoomId = roomId.toString().trim();
@@ -935,24 +937,26 @@ io.on('connection', async (socket) => {
       socket.join(cleanRoomId);
 
       console.log(
-        `[CHAT] chat_opened | uid=${uid} | room=${cleanRoomId}`,
+        `[CHAT] chat_opened | uid=${uid} | room=${cleanRoomId} | markAsRead=${!!markAsRead}`,
       );
 
-      const unreadMessages = await Message.find({
-        roomId: cleanRoomId,
-        senderId: { $ne: uid },
-        read: false,
-      })
-        .select('_id senderId')
-        .lean();
+      if (markAsRead === true) {
+        const unreadMessages = await Message.find({
+          roomId: cleanRoomId,
+          senderId: { $ne: uid },
+          read: false,
+        })
+          .select('_id senderId')
+          .lean();
 
-      if (unreadMessages.length > 0) {
-        await Message.updateMany(
-          { _id: { $in: unreadMessages.map((message) => message._id) } },
-          { $set: { read: true } },
-        );
+        if (unreadMessages.length > 0) {
+          await Message.updateMany(
+            { _id: { $in: unreadMessages.map((message) => message._id) } },
+            { $set: { read: true } },
+          );
 
-        emitReadReceipts(cleanRoomId, uid, unreadMessages.map((m) => m._id));
+          emitReadReceipts(cleanRoomId, uid, unreadMessages.map((m) => m._id));
+        }
       }
     } catch (err) {
       console.error('[chat_opened Error]:', err.message);
