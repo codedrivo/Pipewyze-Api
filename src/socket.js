@@ -845,12 +845,33 @@ io.on('connection', async (socket) => {
       messageIds: messageIds.map((id) => id.toString()),
     };
 
-    console.log(`[SOCKET EMIT] message_read | room=${cleanRoomId} | readBy=${readByUserId} | count=${messageIds.length}`);
+    console.log(`[READ RECEIPT] room=${cleanRoomId} | readBy=${readByUserId} | messageIds=${messageIds.length}`);
 
     io.to(cleanRoomId).emit('messages_read', payload);
     io.to(cleanRoomId).emit('messages_seen', payload);
     io.to(cleanRoomId).emit('message_read', payload);
     io.to(cleanRoomId).emit('message_seen', payload);
+  };
+
+  const markRoomMessagesAsRead = async (cleanRoomId, readByUserId) => {
+    const unreadMessages = await Message.find({
+      roomId: cleanRoomId,
+      senderId: { $ne: readByUserId },
+      $or: [{ read: false }, { read: { $exists: false } }],
+    })
+      .select('_id senderId')
+      .lean();
+
+    if (unreadMessages.length > 0) {
+      const messageIds = unreadMessages.map((m) => m._id);
+      await Message.updateMany(
+        { _id: { $in: messageIds } },
+        { $set: { read: true } },
+      );
+
+      console.log(`[OPEN CHAT] user=${readByUserId} | room=${cleanRoomId} | messagesMarkedRead=${messageIds.length}`);
+      emitReadReceipts(cleanRoomId, readByUserId, messageIds);
+    }
   };
 
   // Atomic chat-open event. This combines room subscription + active presence
@@ -884,22 +905,7 @@ io.on('connection', async (socket) => {
       console.log(`[SOCKET RECV] open_chat | uid=${uid} | room=${cleanRoomId} | markAsRead=${shouldMark}`);
 
       if (shouldMark) {
-        const unreadMessages = await Message.find({
-          roomId: cleanRoomId,
-          senderId: { $ne: uid },
-          read: false,
-        })
-          .select('_id senderId')
-          .lean();
-
-        if (unreadMessages.length > 0) {
-          await Message.updateMany(
-            { _id: { $in: unreadMessages.map((message) => message._id) } },
-            { $set: { read: true } },
-          );
-
-          emitReadReceipts(cleanRoomId, uid, unreadMessages.map((m) => m._id));
-        }
+        await markRoomMessagesAsRead(cleanRoomId, uid);
       }
     } catch (err) {
       console.error(`[CHAT ERROR] open_chat exception | uid=${uid} | room=${cleanRoomId}:`, err);
@@ -938,22 +944,7 @@ io.on('connection', async (socket) => {
       console.log(`[SOCKET RECV] chat_opened | uid=${uid} | room=${cleanRoomId} | markAsRead=${shouldMark}`);
 
       if (shouldMark) {
-        const unreadMessages = await Message.find({
-          roomId: cleanRoomId,
-          senderId: { $ne: uid },
-          read: false,
-        })
-          .select('_id senderId')
-          .lean();
-
-        if (unreadMessages.length > 0) {
-          await Message.updateMany(
-            { _id: { $in: unreadMessages.map((message) => message._id) } },
-            { $set: { read: true } },
-          );
-
-          emitReadReceipts(cleanRoomId, uid, unreadMessages.map((m) => m._id));
-        }
+        await markRoomMessagesAsRead(cleanRoomId, uid);
       }
     } catch (err) {
       console.error('[chat_opened Error]:', err.message);
@@ -991,22 +982,7 @@ io.on('connection', async (socket) => {
     console.log(`[SOCKET RECV] mark_messages_read | uid=${uid} | room=${cleanRoomId}`);
 
     try {
-      const unreadMessages = await Message.find({
-        roomId: cleanRoomId,
-        senderId: { $ne: uid },
-        read: false,
-      })
-        .select('_id senderId')
-        .lean();
-
-      if (unreadMessages.length > 0) {
-        await Message.updateMany(
-          { _id: { $in: unreadMessages.map((message) => message._id) } },
-          { $set: { read: true } },
-        );
-
-        emitReadReceipts(cleanRoomId, uid, unreadMessages.map((m) => m._id));
-      }
+      await markRoomMessagesAsRead(cleanRoomId, uid);
     } catch (err) {
       console.error('[mark_messages_read Error]:', err.message);
     }
@@ -1262,7 +1238,7 @@ io.on('connection', async (socket) => {
           message_count: messageCount,
         };
 
-        console.log(`[SOCKET RECV] send_message | sender=${uid} | room=${cleanRoomId} | recipient=${counterpartId} | recipientActive=${isCounterpartActiveInRoom}`);
+        console.log(`[SEND MESSAGE] sender=${uid} | recipient=${counterpartId} | room=${cleanRoomId} | recipientActive=${isCounterpartActiveInRoom} | messageRead=${isCounterpartActiveInRoom}`);
 
         // Emit message to room and user channels
         console.log(`[SOCKET EMIT] new_message | room=${cleanRoomId} | sender=${uid} | isRead=${isRead}`);
