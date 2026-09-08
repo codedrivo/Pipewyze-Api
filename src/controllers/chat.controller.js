@@ -50,6 +50,18 @@ const getMyChatRooms = catchAsync(async (req, res) => {
   const userId = req.user._id.toString();
   const role = req.user.role;
 
+  // Reset activeRoom for all user sockets since fetching inbox indicates user is in the rooms list, not inside a specific chat room
+  if (global.io) {
+    try {
+      const userSockets = await global.io.in(`user_${userId}`).fetchSockets();
+      userSockets.forEach((s) => {
+        s.activeRoom = null;
+      });
+    } catch (err) {
+      // Ignore socket lookup error
+    }
+  }
+
   let query = { lastMessage: { $exists: true, $ne: null } };
   if (role === 'home-owner') {
     query.homeOwnerId = userId;

@@ -1198,7 +1198,7 @@ io.on('connection', async (socket) => {
           content: finalContent || (isVideo ? 'Video' : 'Photo'),
           fileUrl: finalFileUrl,
           fileType: finalFileType,
-          read: isCounterpartActiveInRoom,
+          read: false,
         });
 
         if (room) {
@@ -1213,48 +1213,54 @@ io.on('connection', async (socket) => {
         );
         const messageJson = populatedMessage.toJSON();
 
-        const [unreadCount, messageCount] = await Promise.all([
+        const [counterpartUnreadCount, messageCount] = await Promise.all([
           Message.countDocuments({
             roomId: cleanRoomId,
-            senderId: { $ne: counterpartId },
+            senderId: uid,
             read: false,
           }),
           Message.countDocuments({ roomId: cleanRoomId }),
         ]);
 
-        const isRead = !!message.read;
-        const formattedMessagePayload = {
+        const basePayload = {
           ...messageJson,
           id: message._id,
-          read: isRead,
-          isRead,
-          is_read: isRead,
-          seen: isRead,
-          isSeen: isRead,
-          status: isRead ? 'read' : 'sent',
-          unreadCount,
-          unread_count: unreadCount,
+          read: false,
+          isRead: false,
+          is_read: false,
+          seen: false,
+          isSeen: false,
+          status: 'sent',
           messageCount,
           message_count: messageCount,
         };
 
-        console.log(`[SEND MESSAGE] sender=${uid} | recipient=${counterpartId} | room=${cleanRoomId} | recipientActive=${isCounterpartActiveInRoom} | messageRead=${isCounterpartActiveInRoom}`);
+        const senderPayload = {
+          ...basePayload,
+          unreadCount: 0,
+          unread_count: 0,
+        };
 
-        // Emit message to room and user channels
-        console.log(`[SOCKET EMIT] new_message | room=${cleanRoomId} | sender=${uid} | isRead=${isRead}`);
-        io.to(cleanRoomId).emit('new_message', formattedMessagePayload);
-        io.to(`user_${counterpartId}`).emit('new_message', formattedMessagePayload);
+        const recipientPayload = {
+          ...basePayload,
+          unreadCount: counterpartUnreadCount,
+          unread_count: counterpartUnreadCount,
+        };
 
-        if (isCounterpartActiveInRoom) {
-          emitReadReceipts(cleanRoomId, counterpartId, [message._id]);
-        }
+        console.log(`[SEND MESSAGE] sender=${uid} | recipient=${counterpartId} | room=${cleanRoomId} | recipientActive=${isCounterpartActiveInRoom} | messageRead=false`);
+
+        // Emit message to sender and recipient channels
+        console.log(`[SOCKET EMIT] new_message | room=${cleanRoomId} | sender=${uid} | isRead=false`);
+        socket.emit('new_message', senderPayload);
+        io.to(`user_${counterpartId}`).emit('new_message', recipientPayload);
+        socket.to(cleanRoomId).emit('new_message', recipientPayload);
 
         io.to(`user_${counterpartId}`).emit('chat_notification', {
           roomId: cleanRoomId,
           senderName: senderUser.fullName || 'Someone',
           message: messageJson,
-          unreadCount,
-          unread_count: unreadCount,
+          unreadCount: counterpartUnreadCount,
+          unread_count: counterpartUnreadCount,
           messageCount,
           message_count: messageCount,
         });
