@@ -1300,8 +1300,118 @@ io.on('connection', async (socket) => {
         console.error(`[CHAT ERROR] send_message exception | uid=${uid} | room=${roomId}:`, error);
         socket.emit('chat_error', { message: 'Failed to send message.' });
       }
-    },
-  );
+    });
+
+  // Ask AI Assistant Handler
+  socket.on('ask_ai', async ({ message, fileUrl, fileType, fileName } = {}) => {
+    try {
+      if ((!message || !message.trim()) && !fileUrl) {
+        return socket.emit('ai_error', {
+          message: 'Please enter a question or upload a file.',
+        });
+      }
+
+      const user = await User.findById(uid, 'role').lean();
+      if (!user) {
+        return socket.emit('ai_error', { message: 'User not found.' });
+      }
+
+      let finalFileUrl = fileUrl || '';
+      let finalFileType = fileType || '';
+
+      if (fileUrl && !fileUrl.startsWith('http')) {
+        try {
+          const uploadResult = await uploadBase64ToS3(fileUrl, fileType);
+          finalFileUrl = uploadResult.fileUrl;
+          finalFileType = uploadResult.fileType;
+        } catch (e) {
+          console.error('[AI Base64 Upload Error]:', e.message);
+          return socket.emit('ai_error', {
+            message: 'Failed to upload media file to server.',
+          });
+        }
+      }
+
+      const isVideo =
+        (finalFileType && finalFileType.startsWith('video/')) ||
+        /\.(mp4|mov|quicktime|webm|m4v|3gp)$/i.test(
+          finalFileUrl || fileName || '',
+        );
+
+      const cleanMessage = message ? message.trim() : '';
+      const mediaContext = isVideo ? 'video' : finalFileUrl ? 'image' : null;
+
+      const { isWorkRelated, searchQuery } =
+        aiAssistant.isWorkRelatedQuestion(cleanMessage);
+
+      const effectiveIsWorkRelated = isWorkRelated || !!mediaContext;
+      const effectiveSearchQuery =
+        searchQuery ||
+        (mediaContext === 'image'
+          ? 'pipe leak repair'
+          : mediaContext === 'video'
+          ? 'plumbing repair tutorial'
+          : '');
+
+      let suggestedVideo = null;
+      let aiMessage = '';
+
+      if (effectiveIsWorkRelated) {
+        suggestedVideo = await aiAssistant.searchAiVideo(
+          effectiveSearchQuery,
+          user.role,
+        );
+
+        if (!suggestedVideo) {
+          suggestedVideo = await aiAssistant.searchYouTubeVideo(
+            effectiveSearchQuery,
+            effectiveIsWorkRelated,
+          );
+        }
+      }
+
+      aiMessage = await aiAssistant.generateAIAnswer(
+        cleanMessage,
+        effectiveIsWorkRelated,
+        mediaContext,
+        finalFileUrl,
+      );
+
+      const responsePayload = {
+        sender: 'ai',
+        message: aiMessage,
+        suggestedVideo,
+        fileUrl: finalFileUrl,
+        fileType: finalFileType,
+        fileName: fileName || '',
+      };
+
+      try {
+        await AiChat.create({
+          userId: uid,
+          message: cleanMessage || (isVideo ? 'Video' : 'Photo'),
+          response: aiMessage,
+          suggestedVideo,
+          fileUrl: finalFileUrl,
+          fileType: finalFileType,
+          fileName: fileName || '',
+        });
+      } catch (dbErr) {
+        console.error('[AI] AiChat save error:', dbErr.message);
+      }
+
+      if (socket.connected) {
+        socket.emit('ai_response', responsePayload);
+      }
+    } catch (err) {
+      console.error('[ask_ai Error]:', err.message);
+      if (socket.connected) {
+        socket.emit('ai_error', {
+          message: 'Failed to process AI assistant request.',
+        });
+      }
+    }
+  });
 
   socket.on('disconnect', async () => {
     try {

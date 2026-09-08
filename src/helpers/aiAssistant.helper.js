@@ -211,6 +211,7 @@ async function searchYouTubeVideo(searchQuery, isWorkRelated = true) {
           maxResults: 1,
           key: apiKey,
         },
+        timeout: 8000,
       },
     );
 
@@ -297,6 +298,7 @@ async function generateAIAnswer(
           Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
+        timeout: 12000,
       },
     );
 
