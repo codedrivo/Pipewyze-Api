@@ -872,13 +872,13 @@ io.on('connection', async (socket) => {
       ? new mongoose.Types.ObjectId(readByUserId)
       : readByUserId;
 
-    const roomIdsFilter = [roomObjId, cleanRoomId.toString()];
-    const senderIdsFilter = [userObjId, readByUserId.toString()];
+    const roomIdsFilter = Array.from(new Set([roomObjId, cleanRoomId.toString()]));
+    const senderIdsFilter = Array.from(new Set([userObjId, readByUserId.toString()]));
 
     const unreadMessages = await Message.find({
       roomId: { $in: roomIdsFilter },
       senderId: { $nin: senderIdsFilter },
-      read: false,
+      read: { $ne: true },
     }).select('_id senderId').lean();
 
     if (unreadMessages.length > 0) {
@@ -1003,13 +1003,17 @@ io.on('connection', async (socket) => {
     const cleanRoomId = roomId.toString().trim();
     if (!cleanRoomId) return;
 
-    if (socket.activeRoom !== cleanRoomId) {
-      return;
-    }
-
     console.log(`[SOCKET RECV] mark_messages_read | uid=${uid} | room=${cleanRoomId}`);
 
     try {
+      const room = await ChatRoom.findById(cleanRoomId).lean();
+      if (!room) return;
+      const isHomeOwner = room.homeOwnerId?.toString() === uid;
+      const isPlumber = room.plumberId?.toString() === uid;
+      if (!isHomeOwner && !isPlumber) return;
+
+      socket.activeRoom = cleanRoomId;
+      socket.join(cleanRoomId);
       await markRoomMessagesAsRead(cleanRoomId, uid);
     } catch (err) {
       console.error('[mark_messages_read Error]:', err.message);
@@ -1019,10 +1023,8 @@ io.on('connection', async (socket) => {
   // ============================================================
   // JOIN ROOM - SUBSCRIPTION ONLY
   // ============================================================
-  // This MUST NOT change socket.activeRoom.
-  // Being subscribed to a room does not mean the user is viewing it.
 
-  socket.on('join_room', async ({ roomId } = {}) => {
+  socket.on('join_room', async ({ roomId, markAsRead } = {}) => {
     if (!roomId) {
       return socket.emit('chat_error', { message: 'roomId is required.' });
     }
@@ -1045,14 +1047,24 @@ io.on('connection', async (socket) => {
       }
 
       socket.join(cleanRoomId);
+      if (markAsRead === true || markAsRead === 'true') {
+        socket.activeRoom = cleanRoomId;
+        await markRoomMessagesAsRead(cleanRoomId, uid);
+      }
+
       console.log(`[SOCKET RECV] join_room | uid=${uid} | room=${cleanRoomId} | active=${socket.activeRoom || 'none'}`);
 
       const counterpartId = isHomeOwner
         ? room.plumberId?.toString()
         : room.homeOwnerId?.toString();
 
+      const roomObjId = mongoose.Types.ObjectId.isValid(cleanRoomId)
+        ? new mongoose.Types.ObjectId(cleanRoomId)
+        : cleanRoomId;
+      const roomIdsFilter = Array.from(new Set([roomObjId, cleanRoomId.toString()]));
+
       const [rawMessages, counterpartUser] = await Promise.all([
-        Message.find({ roomId: cleanRoomId })
+        Message.find({ roomId: { $in: roomIdsFilter } })
           .populate('senderId', 'fullName profileimageurl')
           .sort({ createdAt: 1, _id: 1 })
           .lean(),
@@ -1071,7 +1083,7 @@ io.on('connection', async (socket) => {
           is_read: isRead,
           seen: isRead,
           isSeen: isRead,
-          status: isRead ? 'read' : 'sent',
+          status: isRead ? 'seen' : 'sent',
         };
       });
 
@@ -1241,13 +1253,23 @@ io.on('connection', async (socket) => {
         );
         const messageJson = populatedMessage.toJSON();
 
+        const roomObjId = mongoose.Types.ObjectId.isValid(cleanRoomId)
+          ? new mongoose.Types.ObjectId(cleanRoomId)
+          : cleanRoomId;
+        const senderObjId = mongoose.Types.ObjectId.isValid(uid)
+          ? new mongoose.Types.ObjectId(uid)
+          : uid;
+
+        const roomIdsFilter = Array.from(new Set([roomObjId, cleanRoomId.toString()]));
+        const senderIdsFilter = Array.from(new Set([senderObjId, uid.toString()]));
+
         const [counterpartUnreadCount, messageCount] = await Promise.all([
           Message.countDocuments({
-            roomId: cleanRoomId,
-            senderId: uid,
-            read: false,
+            roomId: { $in: roomIdsFilter },
+            senderId: { $in: senderIdsFilter },
+            read: { $ne: true },
           }),
-          Message.countDocuments({ roomId: cleanRoomId }),
+          Message.countDocuments({ roomId: { $in: roomIdsFilter } }),
         ]);
 
         const isDelivered = counterpartSockets.length > 0;
