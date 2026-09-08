@@ -113,7 +113,7 @@ const getMyChatRooms = catchAsync(async (req, res) => {
       },
       {
         $group: {
-          _id: { $toString: '$roomId' },
+          _id: '$roomId',
           count: { $sum: 1 },
         },
       },
@@ -126,7 +126,7 @@ const getMyChatRooms = catchAsync(async (req, res) => {
       },
       {
         $group: {
-          _id: { $toString: '$roomId' },
+          _id: '$roomId',
           count: { $sum: 1 },
         },
       },
@@ -136,14 +136,14 @@ const getMyChatRooms = catchAsync(async (req, res) => {
   const unreadCountsMap = {};
   unreadCountsAggr.forEach((item) => {
     if (item._id) {
-      unreadCountsMap[String(item._id)] = item.count;
+      unreadCountsMap[item._id.toString()] = item.count;
     }
   });
 
   const messageCountsMap = {};
   messageCountsAggr.forEach((item) => {
     if (item._id) {
-      messageCountsMap[String(item._id)] = item.count;
+      messageCountsMap[item._id.toString()] = item.count;
     }
   });
 
