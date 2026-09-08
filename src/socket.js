@@ -883,9 +883,10 @@ io.on('connection', async (socket) => {
       socket.activeRoom = cleanRoomId;
       socket.join(cleanRoomId);
 
-      console.log(`[CHAT] open_chat | uid=${uid} | room=${cleanRoomId} | markAsRead=${!!markAsRead}`);
+      const shouldMark = markAsRead !== false && markAsRead !== 'false';
+      console.log(`[CHAT] open_chat | uid=${uid} | room=${cleanRoomId} | markAsRead=${shouldMark}`);
 
-      if (markAsRead === true) {
+      if (shouldMark) {
         const unreadMessages = await Message.find({
           roomId: cleanRoomId,
           senderId: { $ne: uid },
@@ -936,11 +937,12 @@ io.on('connection', async (socket) => {
       socket.activeRoom = cleanRoomId;
       socket.join(cleanRoomId);
 
+      const shouldMark = markAsRead !== false && markAsRead !== 'false';
       console.log(
-        `[CHAT] chat_opened | uid=${uid} | room=${cleanRoomId} | markAsRead=${!!markAsRead}`,
+        `[CHAT] chat_opened | uid=${uid} | room=${cleanRoomId} | markAsRead=${shouldMark}`,
       );
 
-      if (markAsRead === true) {
+      if (shouldMark) {
         const unreadMessages = await Message.find({
           roomId: cleanRoomId,
           senderId: { $ne: uid },
