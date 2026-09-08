@@ -832,7 +832,7 @@ io.on('connection', async (socket) => {
   // chat_opened = user is actually viewing this room.
   // chat_closed = user stopped viewing this room.
 
-  const emitReadReceipts = (cleanRoomId, readByUserId, messageIds = []) => {
+  const emitReadReceipts = (cleanRoomId, readByUserId, messageIds = [], senderIds = []) => {
     const payload = {
       roomId: cleanRoomId,
       readBy: readByUserId.toString(),
@@ -851,6 +851,17 @@ io.on('connection', async (socket) => {
     io.to(cleanRoomId).emit('messages_seen', payload);
     io.to(cleanRoomId).emit('message_read', payload);
     io.to(cleanRoomId).emit('message_seen', payload);
+
+    // Also notify senders directly on their user channels
+    senderIds.forEach((sId) => {
+      const sIdStr = sId.toString();
+      if (sIdStr !== readByUserId.toString()) {
+        io.to(`user_${sIdStr}`).emit('messages_read', payload);
+        io.to(`user_${sIdStr}`).emit('messages_seen', payload);
+        io.to(`user_${sIdStr}`).emit('message_read', payload);
+        io.to(`user_${sIdStr}`).emit('message_seen', payload);
+      }
+    });
   };
 
   const markRoomMessagesAsRead = async (cleanRoomId, readByUserId) => {
@@ -867,20 +878,27 @@ io.on('connection', async (socket) => {
     const unreadMessages = await Message.find({
       roomId: { $in: roomIdsFilter },
       senderId: { $nin: senderIdsFilter },
-      $or: [{ read: false }, { read: { $exists: false } }],
-    })
-      .select('_id senderId')
-      .lean();
+      read: false,
+    }).select('_id senderId').lean();
 
     if (unreadMessages.length > 0) {
       const messageIds = unreadMessages.map((m) => m._id);
+      const senderIds = [...new Set(unreadMessages.map((m) => m.senderId.toString()))];
+
       await Message.updateMany(
         { _id: { $in: messageIds } },
         { $set: { read: true } },
       );
 
       console.log(`[OPEN CHAT] user=${readByUserId} | room=${cleanRoomId} | messagesMarkedRead=${messageIds.length}`);
-      emitReadReceipts(cleanRoomId, readByUserId, messageIds);
+      emitReadReceipts(cleanRoomId, readByUserId, messageIds, senderIds);
+
+      // Notify reader's channel of updated unread count (0)
+      io.to(`user_${readByUserId}`).emit('unread_count_updated', {
+        roomId: cleanRoomId,
+        unreadCount: 0,
+        unread_count: 0,
+      });
     }
   };
 
