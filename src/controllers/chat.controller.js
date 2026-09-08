@@ -409,11 +409,17 @@ const getMyChatRooms = catchAsync(async (req, res) => {
             }
             content = fileName || 'File';
           }
+          let senderIdStr = '';
+          if (room.lastMessage.senderId) {
+            senderIdStr = room.lastMessage.senderId._id
+              ? room.lastMessage.senderId._id.toString()
+              : room.lastMessage.senderId.toString();
+          }
           return {
             content,
             fileUrl: room.lastMessage.fileUrl || null,
             fileType: room.lastMessage.fileType || null,
-            senderId: room.lastMessage.senderId,
+            senderId: senderIdStr,
             createdAt: room.lastMessage.createdAt,
             read: room.lastMessage.read || false,
           };
