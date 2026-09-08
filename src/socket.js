@@ -854,9 +854,19 @@ io.on('connection', async (socket) => {
   };
 
   const markRoomMessagesAsRead = async (cleanRoomId, readByUserId) => {
+    const roomObjId = mongoose.Types.ObjectId.isValid(cleanRoomId)
+      ? new mongoose.Types.ObjectId(cleanRoomId)
+      : cleanRoomId;
+    const userObjId = mongoose.Types.ObjectId.isValid(readByUserId)
+      ? new mongoose.Types.ObjectId(readByUserId)
+      : readByUserId;
+
+    const roomIdsFilter = [roomObjId, cleanRoomId.toString()];
+    const senderIdsFilter = [userObjId, readByUserId.toString()];
+
     const unreadMessages = await Message.find({
-      roomId: cleanRoomId,
-      senderId: { $ne: readByUserId },
+      roomId: { $in: roomIdsFilter },
+      senderId: { $nin: senderIdsFilter },
       $or: [{ read: false }, { read: { $exists: false } }],
     })
       .select('_id senderId')
@@ -901,7 +911,7 @@ io.on('connection', async (socket) => {
       socket.activeRoom = cleanRoomId;
       socket.join(cleanRoomId);
 
-      const shouldMark = markAsRead !== false && markAsRead !== 'false';
+      const shouldMark = markAsRead === true || markAsRead === 'true';
       console.log(`[SOCKET RECV] open_chat | uid=${uid} | room=${cleanRoomId} | markAsRead=${shouldMark}`);
 
       if (shouldMark) {
@@ -940,7 +950,7 @@ io.on('connection', async (socket) => {
       socket.activeRoom = cleanRoomId;
       socket.join(cleanRoomId);
 
-      const shouldMark = markAsRead !== false && markAsRead !== 'false';
+      const shouldMark = markAsRead === true || markAsRead === 'true';
       console.log(`[SOCKET RECV] chat_opened | uid=${uid} | room=${cleanRoomId} | markAsRead=${shouldMark}`);
 
       if (shouldMark) {
