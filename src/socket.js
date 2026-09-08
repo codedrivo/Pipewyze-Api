@@ -845,6 +845,8 @@ io.on('connection', async (socket) => {
       messageIds: messageIds.map((id) => id.toString()),
     };
 
+    console.log(`[SOCKET EMIT] message_read | room=${cleanRoomId} | readBy=${readByUserId} | count=${messageIds.length}`);
+
     io.to(cleanRoomId).emit('messages_read', payload);
     io.to(cleanRoomId).emit('messages_seen', payload);
     io.to(cleanRoomId).emit('message_read', payload);
@@ -879,6 +881,7 @@ io.on('connection', async (socket) => {
       socket.join(cleanRoomId);
 
       const shouldMark = markAsRead !== false && markAsRead !== 'false';
+      console.log(`[SOCKET RECV] open_chat | uid=${uid} | room=${cleanRoomId} | markAsRead=${shouldMark}`);
 
       if (shouldMark) {
         const unreadMessages = await Message.find({
@@ -932,6 +935,7 @@ io.on('connection', async (socket) => {
       socket.join(cleanRoomId);
 
       const shouldMark = markAsRead !== false && markAsRead !== 'false';
+      console.log(`[SOCKET RECV] chat_opened | uid=${uid} | room=${cleanRoomId} | markAsRead=${shouldMark}`);
 
       if (shouldMark) {
         const unreadMessages = await Message.find({
@@ -971,6 +975,7 @@ io.on('connection', async (socket) => {
     }
 
     socket.activeRoom = null;
+    console.log(`[SOCKET RECV] chat_closed | uid=${uid} | room=${targetRoomId || 'none'}`);
   });
 
   socket.on('mark_messages_read', async ({ roomId } = {}) => {
@@ -982,6 +987,8 @@ io.on('connection', async (socket) => {
     if (socket.activeRoom !== cleanRoomId) {
       return;
     }
+
+    console.log(`[SOCKET RECV] mark_messages_read | uid=${uid} | room=${cleanRoomId}`);
 
     try {
       const unreadMessages = await Message.find({
@@ -1034,6 +1041,7 @@ io.on('connection', async (socket) => {
       }
 
       socket.join(cleanRoomId);
+      console.log(`[SOCKET RECV] join_room | uid=${uid} | room=${cleanRoomId} | active=${socket.activeRoom || 'none'}`);
 
       const counterpartId = isHomeOwner
         ? room.plumberId?.toString()
@@ -1254,7 +1262,10 @@ io.on('connection', async (socket) => {
           message_count: messageCount,
         };
 
+        console.log(`[SOCKET RECV] send_message | sender=${uid} | room=${cleanRoomId} | recipient=${counterpartId} | recipientActive=${isCounterpartActiveInRoom}`);
+
         // Emit message to room and user channels
+        console.log(`[SOCKET EMIT] new_message | room=${cleanRoomId} | sender=${uid} | isRead=${isRead}`);
         io.to(cleanRoomId).emit('new_message', formattedMessagePayload);
         io.to(`user_${counterpartId}`).emit('new_message', formattedMessagePayload);
 
@@ -1294,6 +1305,7 @@ io.on('connection', async (socket) => {
 
   socket.on('disconnect', async () => {
     try {
+      console.log(`[SOCKET DISCONNECT] User ${uid} disconnected`);
       socket.activeRoom = null;
       const remainingSockets = await io.in(userRoom).fetchSockets();
       if (remainingSockets.length === 0) {
