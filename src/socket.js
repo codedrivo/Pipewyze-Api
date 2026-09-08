@@ -832,7 +832,7 @@ io.on('connection', async (socket) => {
   // chat_opened = user is actually viewing this room.
   // chat_closed = user stopped viewing this room.
 
-  const emitReadReceipts = async (cleanRoomId, readByUserId, messageIds = []) => {
+  const emitReadReceipts = (cleanRoomId, readByUserId, messageIds = []) => {
     const payload = {
       roomId: cleanRoomId,
       readBy: readByUserId.toString(),
@@ -851,26 +851,6 @@ io.on('connection', async (socket) => {
     io.to(cleanRoomId).emit('messages_seen', payload);
     io.to(cleanRoomId).emit('message_read', payload);
     io.to(cleanRoomId).emit('message_seen', payload);
-
-    try {
-      const room = await ChatRoom.findById(cleanRoomId).lean();
-      if (room) {
-        const homeOwnerIdStr = room.homeOwnerId?.toString();
-        const plumberIdStr = room.plumberId?.toString();
-        const counterpartId =
-          readByUserId.toString() === homeOwnerIdStr
-            ? plumberIdStr
-            : homeOwnerIdStr;
-        if (counterpartId) {
-          io.to(`user_${counterpartId}`).emit('messages_read', payload);
-          io.to(`user_${counterpartId}`).emit('messages_seen', payload);
-          io.to(`user_${counterpartId}`).emit('message_read', payload);
-          io.to(`user_${counterpartId}`).emit('message_seen', payload);
-        }
-      }
-    } catch (e) {
-      console.error('[emitReadReceipts error]:', e.message);
-    }
   };
 
   const markRoomMessagesAsRead = async (cleanRoomId, readByUserId) => {
