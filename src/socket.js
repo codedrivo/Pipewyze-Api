@@ -887,7 +887,7 @@ io.on('connection', async (socket) => {
 
       await Message.updateMany(
         { _id: { $in: messageIds } },
-        { $set: { read: true } },
+        { $set: { read: true, status: 'seen' } },
       );
 
       console.log(`[OPEN CHAT] user=${readByUserId} | room=${cleanRoomId} | messagesMarkedRead=${messageIds.length}`);
@@ -929,7 +929,7 @@ io.on('connection', async (socket) => {
       socket.activeRoom = cleanRoomId;
       socket.join(cleanRoomId);
 
-      const shouldMark = markAsRead === true || markAsRead === 'true';
+      const shouldMark = markAsRead !== false && markAsRead !== 'false';
       console.log(`[SOCKET RECV] open_chat | uid=${uid} | room=${cleanRoomId} | markAsRead=${shouldMark}`);
 
       if (shouldMark) {
@@ -968,7 +968,7 @@ io.on('connection', async (socket) => {
       socket.activeRoom = cleanRoomId;
       socket.join(cleanRoomId);
 
-      const shouldMark = markAsRead === true || markAsRead === 'true';
+      const shouldMark = markAsRead !== false && markAsRead !== 'false';
       console.log(`[SOCKET RECV] chat_opened | uid=${uid} | room=${cleanRoomId} | markAsRead=${shouldMark}`);
 
       if (shouldMark) {
@@ -1250,6 +1250,9 @@ io.on('connection', async (socket) => {
           Message.countDocuments({ roomId: cleanRoomId }),
         ]);
 
+        const isDelivered = counterpartSockets.length > 0;
+        const status = isDelivered ? 'delivered' : 'sent';
+
         const basePayload = {
           ...messageJson,
           id: message._id,
@@ -1258,7 +1261,9 @@ io.on('connection', async (socket) => {
           is_read: false,
           seen: false,
           isSeen: false,
-          status: 'sent',
+          delivered: isDelivered,
+          isDelivered,
+          status,
           messageCount,
           message_count: messageCount,
         };

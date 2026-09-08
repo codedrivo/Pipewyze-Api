@@ -346,7 +346,7 @@ const getRoomMessages = catchAsync(async (req, res) => {
       is_read: isRead,
       seen: isRead,
       isSeen: isRead,
-      status: isRead ? 'read' : 'sent',
+      status: isRead ? 'seen' : 'sent',
     };
   });
 
