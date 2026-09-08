@@ -328,13 +328,30 @@ const getMyChatRooms = catchAsync(async (req, res) => {
     .skip(skip)
     .limit(limit);
 
-  const roomIds = roomsList.map((r) => r._id);
+  const matchRoomIds = [];
+  roomsList.forEach((r) => {
+    if (r._id) {
+      const strId = r._id.toString();
+      matchRoomIds.push(strId);
+      if (mongoose.Types.ObjectId.isValid(strId)) {
+        matchRoomIds.push(new mongoose.Types.ObjectId(strId));
+      }
+    }
+  });
+
+  const userObjectId = mongoose.Types.ObjectId.isValid(userId)
+    ? new mongoose.Types.ObjectId(userId)
+    : null;
+  const userSenderMatch = userObjectId
+    ? { $nin: [userId, userObjectId] }
+    : { $ne: userId };
+
   const [unreadCountsAggr, messageCountsAggr] = await Promise.all([
     Message.aggregate([
       {
         $match: {
-          roomId: { $in: roomIds },
-          senderId: { $ne: new mongoose.Types.ObjectId(userId) },
+          roomId: { $in: matchRoomIds },
+          senderId: userSenderMatch,
           read: false,
         },
       },
@@ -348,7 +365,7 @@ const getMyChatRooms = catchAsync(async (req, res) => {
     Message.aggregate([
       {
         $match: {
-          roomId: { $in: roomIds },
+          roomId: { $in: matchRoomIds },
         },
       },
       {
@@ -362,12 +379,16 @@ const getMyChatRooms = catchAsync(async (req, res) => {
 
   const unreadCountsMap = {};
   unreadCountsAggr.forEach((item) => {
-    unreadCountsMap[item._id.toString()] = item.count;
+    if (item._id) {
+      unreadCountsMap[item._id.toString()] = item.count;
+    }
   });
 
   const messageCountsMap = {};
   messageCountsAggr.forEach((item) => {
-    messageCountsMap[item._id.toString()] = item.count;
+    if (item._id) {
+      messageCountsMap[item._id.toString()] = item.count;
+    }
   });
 
   const formattedRooms = roomsList
@@ -573,9 +594,13 @@ const getRoomMessages = catchAsync(async (req, res) => {
   });
 
   const total = formattedMessages.length;
-  const unreadCount = formattedMessages.filter(
-    (m) => m.senderId && m.senderId._id.toString() !== userId && !m.read
-  ).length;
+  const unreadCount = formattedMessages.filter((m) => {
+    if (!m.senderId || m.read) return false;
+    const senderStr = m.senderId._id
+      ? m.senderId._id.toString()
+      : m.senderId.toString();
+    return senderStr !== userId;
+  }).length;
 
   res.status(200).send({
     status: 200,
