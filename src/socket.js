@@ -854,10 +854,7 @@ io.on('connection', async (socket) => {
   // Atomic chat-open event. This combines room subscription + active presence
   // + directional read receipts in ONE server event.
   socket.on('open_chat', async ({ roomId, markAsRead } = {}) => {
-    if (!roomId) {
-      console.warn(`[CHAT WARN] open_chat missing roomId | uid=${uid}`);
-      return;
-    }
+    if (!roomId) return;
 
     const cleanRoomId = roomId.toString().trim();
     if (!cleanRoomId) return;
@@ -865,14 +862,12 @@ io.on('connection', async (socket) => {
     try {
       const room = await ChatRoom.findById(cleanRoomId).lean();
       if (!room) {
-        console.warn(`[CHAT WARN] open_chat room not found | uid=${uid} | room=${cleanRoomId}`);
         return socket.emit('chat_error', { message: 'Chat room not found.' });
       }
 
       const isHomeOwner = room.homeOwnerId?.toString() === uid;
       const isPlumber = room.plumberId?.toString() === uid;
       if (!isHomeOwner && !isPlumber) {
-        console.warn(`[CHAT WARN] open_chat unauthorized | uid=${uid} | room=${cleanRoomId}`);
         return socket.emit('chat_error', { message: 'Unauthorized room access.' });
       }
 
@@ -883,8 +878,7 @@ io.on('connection', async (socket) => {
       socket.activeRoom = cleanRoomId;
       socket.join(cleanRoomId);
 
-      const shouldMark = markAsRead === true || markAsRead === 'true';
-      console.log(`[CHAT] open_chat | uid=${uid} | room=${cleanRoomId} | markAsRead=${shouldMark}`);
+      const shouldMark = markAsRead !== false && markAsRead !== 'false';
 
       if (shouldMark) {
         const unreadMessages = await Message.find({
@@ -937,10 +931,7 @@ io.on('connection', async (socket) => {
       socket.activeRoom = cleanRoomId;
       socket.join(cleanRoomId);
 
-      const shouldMark = markAsRead === true || markAsRead === 'true';
-      console.log(
-        `[CHAT] chat_opened | uid=${uid} | room=${cleanRoomId} | markAsRead=${shouldMark}`,
-      );
+      const shouldMark = markAsRead !== false && markAsRead !== 'false';
 
       if (shouldMark) {
         const unreadMessages = await Message.find({
@@ -980,7 +971,6 @@ io.on('connection', async (socket) => {
     }
 
     socket.activeRoom = null;
-    console.log(`[CHAT] chat_closed | uid=${uid} | room=${targetRoomId || 'none'}`);
   });
 
   socket.on('mark_messages_read', async ({ roomId } = {}) => {
@@ -990,9 +980,6 @@ io.on('connection', async (socket) => {
     if (!cleanRoomId) return;
 
     if (socket.activeRoom !== cleanRoomId) {
-      console.log(
-        `[CHAT] Ignoring mark_messages_read - room is not active: ${cleanRoomId}`,
-      );
       return;
     }
 
@@ -1047,10 +1034,6 @@ io.on('connection', async (socket) => {
       }
 
       socket.join(cleanRoomId);
-
-      console.log(
-        `[CHAT] join_room | uid=${uid} | room=${cleanRoomId} | active=${socket.activeRoom || 'none'}`,
-      );
 
       const counterpartId = isHomeOwner
         ? room.plumberId?.toString()
@@ -1225,10 +1208,6 @@ io.on('connection', async (socket) => {
           (s) => s.activeRoom === cleanRoomId,
         );
 
-        console.log(
-          `[CHAT] send_message | uid=${uid} | room=${cleanRoomId} | recipient=${counterpartId} | recipientActive=${isCounterpartActiveInRoom}`,
-        );
-
         const message = await Message.create({
           roomId: cleanRoomId,
           senderId: uid,
@@ -1315,7 +1294,6 @@ io.on('connection', async (socket) => {
 
   socket.on('disconnect', async () => {
     try {
-      console.log(`[Socket Disconnected] User ${uid} disconnected`);
       socket.activeRoom = null;
       const remainingSockets = await io.in(userRoom).fetchSockets();
       if (remainingSockets.length === 0) {
