@@ -1106,13 +1106,13 @@ io.on('connection', async (socket) => {
   // Send Message
   socket.on(
     'send_message',
-    async ({ roomId, receiverId, content, fileUrl, fileType, fileName }) => {
+    async ({ roomId, receiverId, content, fileUrl, fileType, fileName }, ack) => {
       try {
         if (!roomId || (!content && !fileUrl)) {
           console.warn(`[CHAT WARN] send_message missing roomId or payload | uid=${uid} | roomId=${roomId}`);
-          return socket.emit('chat_error', {
-            message: 'Missing roomId or message payload.',
-          });
+          const errRes = { message: 'Missing roomId or message payload.' };
+          if (typeof ack === 'function') ack({ success: false, ...errRes });
+          return socket.emit('chat_error', errRes);
         }
 
         const cleanRoomId = roomId.toString().trim();
@@ -1123,23 +1123,25 @@ io.on('connection', async (socket) => {
 
         if (!senderUser) {
           console.warn(`[CHAT WARN] send_message sender not found | uid=${uid}`);
-          return socket.emit('chat_error', { message: 'Sender not found.' });
+          const errRes = { message: 'Sender not found.' };
+          if (typeof ack === 'function') ack({ success: false, ...errRes });
+          return socket.emit('chat_error', errRes);
         }
 
         if (!room) {
           if (!receiverId) {
             console.warn(`[CHAT WARN] send_message room not found & no receiverId | uid=${uid} | room=${cleanRoomId}`);
-            return socket.emit('chat_error', {
-              message: 'receiverId is required when creating a new chat room.',
-            });
+            const errRes = { message: 'receiverId is required when creating a new chat room.' };
+            if (typeof ack === 'function') ack({ success: false, ...errRes });
+            return socket.emit('chat_error', errRes);
           }
 
           const receiver = await User.findById(receiverId, 'role').lean();
           if (!receiver) {
             console.warn(`[CHAT WARN] send_message receiver not found | uid=${uid} | receiverId=${receiverId}`);
-            return socket.emit('chat_error', {
-              message: 'Receiver not found.',
-            });
+            const errRes = { message: 'Receiver not found.' };
+            if (typeof ack === 'function') ack({ success: false, ...errRes });
+            return socket.emit('chat_error', errRes);
           }
 
           const isPlumber = senderUser.role === 'licensed-plumber';
@@ -1156,9 +1158,9 @@ io.on('connection', async (socket) => {
             plumberId = receiverId.toString();
           } else {
             console.warn(`[CHAT WARN] send_message invalid participants | uid=${uid} (${senderUser.role}) | receiverId=${receiverId} (${receiver.role})`);
-            return socket.emit('chat_error', {
-              message: 'Invalid chat participants.',
-            });
+            const errRes = { message: 'Invalid chat participants.' };
+            if (typeof ack === 'function') ack({ success: false, ...errRes });
+            return socket.emit('chat_error', errRes);
           }
 
           room = await ChatRoom.create({ _id: cleanRoomId, homeOwnerId, plumberId });
@@ -1176,16 +1178,16 @@ io.on('connection', async (socket) => {
           counterpartId = homeOwnerIdStr;
         } else {
           console.warn(`[CHAT WARN] send_message unauthorized participant | uid=${uid} | room=${cleanRoomId}`);
-          return socket.emit('chat_error', {
-            message: 'Unauthorized action. You are not a participant of this chat room.',
-          });
+          const errRes = { message: 'Unauthorized action. You are not a participant of this chat room.' };
+          if (typeof ack === 'function') ack({ success: false, ...errRes });
+          return socket.emit('chat_error', errRes);
         }
 
         if (!counterpartId) {
           console.warn(`[CHAT WARN] send_message no counterpart found | uid=${uid} | room=${cleanRoomId}`);
-          return socket.emit('chat_error', {
-            message: 'Chat room does not have a valid counterpart.',
-          });
+          const errRes = { message: 'Chat room does not have a valid counterpart.' };
+          if (typeof ack === 'function') ack({ success: false, ...errRes });
+          return socket.emit('chat_error', errRes);
         }
 
         // Media processing
@@ -1278,6 +1280,20 @@ io.on('connection', async (socket) => {
         const basePayload = {
           ...messageJson,
           id: message._id,
+          _id: message._id,
+          fileUrl: finalFileUrl,
+          file_url: finalFileUrl,
+          url: finalFileUrl,
+          mediaUrl: finalFileUrl,
+          media_url: finalFileUrl,
+          fileType: finalFileType,
+          file_type: finalFileType,
+          type: finalFileType,
+          mediaType: finalFileType,
+          media_type: finalFileType,
+          content: finalContent || (isVideo ? 'Video' : 'Photo'),
+          text: finalContent || (isVideo ? 'Video' : 'Photo'),
+          message: finalContent || (isVideo ? 'Video' : 'Photo'),
           read: false,
           isRead: false,
           is_read: false,
@@ -1288,6 +1304,9 @@ io.on('connection', async (socket) => {
           status,
           messageCount,
           message_count: messageCount,
+          createdAt: message.createdAt,
+          created_at: message.createdAt,
+          timestamp: message.createdAt,
         };
 
         const senderPayload = {
@@ -1304,11 +1323,20 @@ io.on('connection', async (socket) => {
 
         console.log(`[SEND MESSAGE] sender=${uid} | recipient=${counterpartId} | room=${cleanRoomId} | recipientActive=${isCounterpartActiveInRoom} | messageRead=false`);
 
-        // Emit message to sender and recipient channels
-        console.log(`[SOCKET EMIT] new_message | room=${cleanRoomId} | sender=${uid} | isRead=false`);
+        // Emit message to sender sockets, recipient sockets, and room
+        console.log(`[SOCKET EMIT] new_message | room=${cleanRoomId} | sender=${uid}`);
         socket.emit('new_message', senderPayload);
+        socket.emit('receive_message', senderPayload);
+        socket.emit('message_received', senderPayload);
+        io.to(`user_${uid}`).emit('new_message', senderPayload);
+        io.to(`user_${uid}`).emit('receive_message', senderPayload);
+
         io.to(`user_${counterpartId}`).emit('new_message', recipientPayload);
+        io.to(`user_${counterpartId}`).emit('receive_message', recipientPayload);
+        io.to(`user_${counterpartId}`).emit('message_received', recipientPayload);
+
         socket.to(cleanRoomId).emit('new_message', recipientPayload);
+        socket.to(cleanRoomId).emit('receive_message', recipientPayload);
 
         io.to(`user_${counterpartId}`).emit('chat_notification', {
           roomId: cleanRoomId,
@@ -1319,6 +1347,10 @@ io.on('connection', async (socket) => {
           messageCount,
           message_count: messageCount,
         });
+
+        if (typeof ack === 'function') {
+          ack({ success: true, data: senderPayload, message: senderPayload });
+        }
 
         // Push notification only sent when recipient is not currently viewing the room
         if (!isCounterpartActiveInRoom) {
@@ -1335,22 +1367,27 @@ io.on('connection', async (socket) => {
         }
       } catch (error) {
         console.error(`[CHAT ERROR] send_message exception | uid=${uid} | room=${roomId}:`, error);
-        socket.emit('chat_error', { message: 'Failed to send message.' });
+        const errRes = { message: 'Failed to send message.' };
+        if (typeof ack === 'function') ack({ success: false, ...errRes });
+        socket.emit('chat_error', errRes);
       }
-    });
+    }
+  );
 
   // Ask AI Assistant Handler
-  socket.on('ask_ai', async ({ message, fileUrl, fileType, fileName } = {}) => {
+  socket.on('ask_ai', async ({ message, fileUrl, fileType, fileName } = {}, ack) => {
     try {
       if ((!message || !message.trim()) && !fileUrl) {
-        return socket.emit('ai_error', {
-          message: 'Please enter a question or upload a file.',
-        });
+        const errRes = { message: 'Please enter a question or upload a file.' };
+        if (typeof ack === 'function') ack({ success: false, ...errRes });
+        return socket.emit('ai_error', errRes);
       }
 
       const user = await User.findById(uid, 'role').lean();
       if (!user) {
-        return socket.emit('ai_error', { message: 'User not found.' });
+        const errRes = { message: 'User not found.' };
+        if (typeof ack === 'function') ack({ success: false, ...errRes });
+        return socket.emit('ai_error', errRes);
       }
 
       let finalFileUrl = fileUrl || '';
@@ -1363,9 +1400,9 @@ io.on('connection', async (socket) => {
           finalFileType = uploadResult.fileType;
         } catch (e) {
           console.error('[AI Base64 Upload Error]:', e.message);
-          return socket.emit('ai_error', {
-            message: 'Failed to upload media file to server.',
-          });
+          const errRes = { message: 'Failed to upload media file to server.' };
+          if (typeof ack === 'function') ack({ success: false, ...errRes });
+          return socket.emit('ai_error', errRes);
         }
       }
 
@@ -1377,6 +1414,14 @@ io.on('connection', async (socket) => {
 
       const cleanMessage = message ? message.trim() : '';
       const mediaContext = isVideo ? 'video' : finalFileUrl ? 'image' : null;
+
+      // Immediately notify client socket that the message was received by server
+      socket.emit('ai_message_received', {
+        userMessage: cleanMessage || (isVideo ? 'Video' : 'Photo'),
+        fileUrl: finalFileUrl,
+        fileType: finalFileType,
+        status: 'processing',
+      });
 
       const { isWorkRelated, searchQuery } =
         aiAssistant.isWorkRelatedQuestion(cleanMessage);
@@ -1414,17 +1459,10 @@ io.on('connection', async (socket) => {
         finalFileUrl,
       );
 
-      const responsePayload = {
-        sender: 'ai',
-        message: aiMessage,
-        suggestedVideo,
-        fileUrl: finalFileUrl,
-        fileType: finalFileType,
-        fileName: fileName || '',
-      };
-
+      // Create AiChat record in database FIRST so _id and createdAt exist
+      let aiRecord = null;
       try {
-        await AiChat.create({
+        aiRecord = await AiChat.create({
           userId: uid,
           message: cleanMessage || (isVideo ? 'Video' : 'Photo'),
           response: aiMessage,
@@ -1437,15 +1475,54 @@ io.on('connection', async (socket) => {
         console.error('[AI] AiChat save error:', dbErr.message);
       }
 
+      const recordId = aiRecord?._id ? aiRecord._id.toString() : new mongoose.Types.ObjectId().toString();
+      const recordTime = aiRecord?.createdAt ? aiRecord.createdAt.toISOString() : new Date().toISOString();
+
+      const responsePayload = {
+        _id: recordId,
+        id: recordId,
+        sender: 'ai',
+        role: 'assistant',
+        message: aiMessage,
+        content: aiMessage,
+        response: aiMessage,
+        text: aiMessage,
+        userMessage: cleanMessage || (isVideo ? 'Video' : 'Photo'),
+        user_message: cleanMessage || (isVideo ? 'Video' : 'Photo'),
+        suggestedVideo,
+        fileUrl: finalFileUrl,
+        file_url: finalFileUrl,
+        url: finalFileUrl,
+        mediaUrl: finalFileUrl,
+        media_url: finalFileUrl,
+        fileType: finalFileType,
+        file_type: finalFileType,
+        type: finalFileType,
+        mediaType: finalFileType,
+        media_type: finalFileType,
+        fileName: fileName || '',
+        createdAt: recordTime,
+        created_at: recordTime,
+        timestamp: recordTime,
+        status: 'success',
+      };
+
       if (socket.connected) {
         socket.emit('ai_response', responsePayload);
+        socket.emit('ai_message', responsePayload);
+        socket.emit('new_ai_message', responsePayload);
+        io.to(`user_${uid}`).emit('ai_response', responsePayload);
+      }
+
+      if (typeof ack === 'function') {
+        ack({ success: true, data: responsePayload, response: responsePayload });
       }
     } catch (err) {
       console.error('[ask_ai Error]:', err.message);
+      const errRes = { message: 'Failed to process AI assistant request.' };
+      if (typeof ack === 'function') ack({ success: false, ...errRes });
       if (socket.connected) {
-        socket.emit('ai_error', {
-          message: 'Failed to process AI assistant request.',
-        });
+        socket.emit('ai_error', errRes);
       }
     }
   });
