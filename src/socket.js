@@ -1024,84 +1024,256 @@ io.on('connection', async (socket) => {
   // JOIN ROOM - SUBSCRIPTION ONLY
   // ============================================================
 
-  socket.on('join_room', async ({ roomId, markAsRead } = {}) => {
+  // socket.on('join_room', async ({ roomId, markAsRead } = {}) => {
+  //   if (!roomId) {
+  //     return socket.emit('chat_error', { message: 'roomId is required.' });
+  //   }
+
+  //   try {
+  //     const cleanRoomId = roomId.toString().trim();
+  //     const room = await ChatRoom.findById(cleanRoomId).lean();
+
+  //     if (!room) {
+  //       return socket.emit('chat_error', { message: 'Chat room not found.' });
+  //     }
+
+  //     const isHomeOwner = room.homeOwnerId?.toString() === uid;
+  //     const isPlumber = room.plumberId?.toString() === uid;
+
+  //     if (!isHomeOwner && !isPlumber) {
+  //       return socket.emit('chat_error', {
+  //         message: 'Unauthorized room access.',
+  //       });
+  //     }
+
+  //     socket.join(cleanRoomId);
+  //     if (markAsRead === true || markAsRead === 'true') {
+  //       socket.activeRoom = cleanRoomId;
+  //       await markRoomMessagesAsRead(cleanRoomId, uid);
+  //     }
+
+  //     console.log(`[SOCKET RECV] join_room | uid=${uid} | room=${cleanRoomId} | active=${socket.activeRoom || 'none'}`);
+
+  //     const counterpartId = isHomeOwner
+  //       ? room.plumberId?.toString()
+  //       : room.homeOwnerId?.toString();
+
+  //     const roomObjId = mongoose.Types.ObjectId.isValid(cleanRoomId)
+  //       ? new mongoose.Types.ObjectId(cleanRoomId)
+  //       : cleanRoomId;
+  //     const roomIdsFilter = Array.from(new Set([roomObjId, cleanRoomId.toString()]));
+
+  //     const [rawMessages, counterpartUser] = await Promise.all([
+  //       Message.find({ roomId: { $in: roomIdsFilter } })
+  //         .populate('senderId', 'fullName profileimageurl')
+  //         .sort({ createdAt: 1, _id: 1 })
+  //         .lean(),
+  //       counterpartId
+  //         ? User.findById(counterpartId, 'isOnline').lean()
+  //         : null,
+  //     ]);
+
+  //     const formattedMessages = rawMessages.map((msg) => {
+  //       const isRead = !!msg.read;
+  //       return {
+  //         ...msg,
+  //         id: msg._id,
+  //         read: isRead,
+  //         isRead,
+  //         is_read: isRead,
+  //         seen: isRead,
+  //         isSeen: isRead,
+  //         status: isRead ? 'seen' : 'sent',
+  //       };
+  //     });
+
+  //     socket.emit('message_history', formattedMessages);
+
+  //     if (counterpartUser) {
+  //       socket.emit('user_status_changed', {
+  //         userId: counterpartId,
+  //         isOnline: !!counterpartUser.isOnline,
+  //       });
+  //     }
+  //   } catch (error) {
+  //     console.error('[join_room Error]:', error.message);
+  //     socket.emit('chat_error', {
+  //       message: 'Internal server error in join_room.',
+  //     });
+  //   }
+  // });
+
+  socket.on(
+  'join_room',
+  async ({ roomId, markAsRead } = {}, ack) => {
+    const sendAck = (response) => {
+      if (typeof ack === 'function') {
+        ack(response);
+      }
+    };
+
     if (!roomId) {
-      return socket.emit('chat_error', { message: 'roomId is required.' });
+      sendAck({
+        success: false,
+        message: 'roomId is required.',
+      });
+
+      return socket.emit('chat_error', {
+        message: 'roomId is required.',
+      });
     }
 
     try {
       const cleanRoomId = roomId.toString().trim();
+
       const room = await ChatRoom.findById(cleanRoomId).lean();
 
       if (!room) {
-        return socket.emit('chat_error', { message: 'Chat room not found.' });
+        sendAck({
+          success: false,
+          message: 'Chat room not found.',
+        });
+
+        return socket.emit('chat_error', {
+          message: 'Chat room not found.',
+        });
       }
 
-      const isHomeOwner = room.homeOwnerId?.toString() === uid;
-      const isPlumber = room.plumberId?.toString() === uid;
+      const isHomeOwner =
+        room.homeOwnerId?.toString() === uid;
+
+      const isPlumber =
+        room.plumberId?.toString() === uid;
 
       if (!isHomeOwner && !isPlumber) {
+        sendAck({
+          success: false,
+          message: 'Unauthorized room access.',
+        });
+
         return socket.emit('chat_error', {
           message: 'Unauthorized room access.',
         });
       }
 
       socket.join(cleanRoomId);
-      if (markAsRead === true || markAsRead === 'true') {
+
+      if (
+        markAsRead === true ||
+        markAsRead === 'true'
+      ) {
         socket.activeRoom = cleanRoomId;
-        await markRoomMessagesAsRead(cleanRoomId, uid);
+
+        await markRoomMessagesAsRead(
+          cleanRoomId,
+          uid,
+        );
       }
 
-      console.log(`[SOCKET RECV] join_room | uid=${uid} | room=${cleanRoomId} | active=${socket.activeRoom || 'none'}`);
+      console.log(
+        `[SOCKET RECV] join_room | uid=${uid} | room=${cleanRoomId} | active=${socket.activeRoom || 'none'}`,
+      );
 
       const counterpartId = isHomeOwner
         ? room.plumberId?.toString()
         : room.homeOwnerId?.toString();
 
-      const roomObjId = mongoose.Types.ObjectId.isValid(cleanRoomId)
-        ? new mongoose.Types.ObjectId(cleanRoomId)
-        : cleanRoomId;
-      const roomIdsFilter = Array.from(new Set([roomObjId, cleanRoomId.toString()]));
+      const roomObjId =
+        mongoose.Types.ObjectId.isValid(cleanRoomId)
+          ? new mongoose.Types.ObjectId(cleanRoomId)
+          : cleanRoomId;
 
-      const [rawMessages, counterpartUser] = await Promise.all([
-        Message.find({ roomId: { $in: roomIdsFilter } })
-          .populate('senderId', 'fullName profileimageurl')
-          .sort({ createdAt: 1, _id: 1 })
-          .lean(),
-        counterpartId
-          ? User.findById(counterpartId, 'isOnline').lean()
-          : null,
-      ]);
+      const roomIdsFilter = Array.from(
+        new Set([
+          roomObjId,
+          cleanRoomId.toString(),
+        ]),
+      );
 
-      const formattedMessages = rawMessages.map((msg) => {
-        const isRead = !!msg.read;
-        return {
-          ...msg,
-          id: msg._id,
-          read: isRead,
-          isRead,
-          is_read: isRead,
-          seen: isRead,
-          isSeen: isRead,
-          status: isRead ? 'seen' : 'sent',
-        };
-      });
+      const [rawMessages, counterpartUser] =
+        await Promise.all([
+          Message.find({
+            roomId: {
+              $in: roomIdsFilter,
+            },
+          })
+            .populate(
+              'senderId',
+              'fullName profileimageurl',
+            )
+            .sort({
+              createdAt: 1,
+              _id: 1,
+            })
+            .lean(),
 
-      socket.emit('message_history', formattedMessages);
+          counterpartId
+            ? User.findById(
+                counterpartId,
+                'isOnline',
+              ).lean()
+            : null,
+        ]);
+
+      const formattedMessages =
+        rawMessages.map((msg) => {
+          const isRead = !!msg.read;
+
+          return {
+            ...msg,
+            id: msg._id,
+            read: isRead,
+            isRead,
+            is_read: isRead,
+            seen: isRead,
+            isSeen: isRead,
+            status: isRead
+              ? 'seen'
+              : 'sent',
+          };
+        });
+
+      socket.emit(
+        'message_history',
+        formattedMessages,
+      );
 
       if (counterpartUser) {
-        socket.emit('user_status_changed', {
-          userId: counterpartId,
-          isOnline: !!counterpartUser.isOnline,
-        });
+        socket.emit(
+          'user_status_changed',
+          {
+            userId: counterpartId,
+            isOnline:
+              !!counterpartUser.isOnline,
+          },
+        );
       }
+
+      // IMPORTANT: tell Flutter the join succeeded
+      sendAck({
+        success: true,
+        roomId: cleanRoomId,
+      });
     } catch (error) {
-      console.error('[join_room Error]:', error.message);
+      console.error(
+        '[join_room Error]:',
+        error,
+      );
+
+      // IMPORTANT: also ACK failures
+      sendAck({
+        success: false,
+        message: error?.message ||
+            'Internal server error in join_room.',
+      });
+
       socket.emit('chat_error', {
-        message: 'Internal server error in join_room.',
+        message:
+            'Internal server error in join_room.',
       });
     }
-  });
+  },
+);
 
   // Send Message
   socket.on(
