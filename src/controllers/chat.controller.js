@@ -393,12 +393,36 @@ const uploadChatMedia = catchAsync(async (req, res) => {
     throw new ApiError('Please upload a video or photo file', 400);
   }
 
-  console.log(`[CHAT REST] POST /v1/chat/media | name=${req.file.originalname} | type=${req.file.mimetype}`);
+  const uploadedUrl = req.file.location || req.file.path;
+  const fileType = req.file.mimetype;
+
+  console.log(`[CHAT REST] POST /v1/chat/media | name=${req.file.originalname} | type=${fileType} | url=${uploadedUrl}`);
 
   res.status(200).send({
+    status: 200,
     message: 'Media uploaded successfully',
-    fileUrl: req.file.location,
-    fileType: req.file.mimetype,
+    fileUrl: uploadedUrl,
+    file_url: uploadedUrl,
+    url: uploadedUrl,
+    mediaUrl: uploadedUrl,
+    media_url: uploadedUrl,
+    fileType: fileType,
+    file_type: fileType,
+    type: fileType,
+    mediaType: fileType,
+    media_type: fileType,
+    data: {
+      fileUrl: uploadedUrl,
+      file_url: uploadedUrl,
+      url: uploadedUrl,
+      mediaUrl: uploadedUrl,
+      media_url: uploadedUrl,
+      fileType: fileType,
+      file_type: fileType,
+      type: fileType,
+      mediaType: fileType,
+      media_type: fileType,
+    },
   });
 });
 
