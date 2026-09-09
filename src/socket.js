@@ -687,6 +687,8 @@ const bodyParser = require('body-parser');
 const socketIo = require('socket.io');
 const jwt = require('jsonwebtoken');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const mongoose = require('mongoose');
+
 
 const config = require('./config/config');
 const ChatRoom = require('./models/chatRoom.model');
