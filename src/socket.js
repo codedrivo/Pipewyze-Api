@@ -1612,26 +1612,43 @@ io.on('connection', async (socket) => {
       let suggestedVideo = null;
       let aiMessage = '';
 
-      if (effectiveIsWorkRelated) {
-        suggestedVideo = await aiAssistant.searchAiVideo(
-          effectiveSearchQuery,
-          user.role,
-        );
-
-        if (!suggestedVideo) {
-          suggestedVideo = await aiAssistant.searchYouTubeVideo(
-            effectiveSearchQuery,
-            effectiveIsWorkRelated,
-          );
+      // Check cache first for pure text queries (skip cache if media file attached)
+      if (!finalFileUrl && cleanMessage) {
+        const cachedRes = await aiAssistant.getCachedAIAnswer(cleanMessage);
+        if (cachedRes) {
+          aiMessage = cachedRes.response;
+          suggestedVideo = cachedRes.suggestedVideo || null;
         }
       }
 
-      aiMessage = await aiAssistant.generateAIAnswer(
-        cleanMessage,
-        effectiveIsWorkRelated,
-        mediaContext,
-        finalFileUrl,
-      );
+      if (!aiMessage) {
+        if (effectiveIsWorkRelated) {
+          suggestedVideo = await aiAssistant.searchAiVideo(
+            effectiveSearchQuery,
+            user.role,
+          );
+
+          if (!suggestedVideo) {
+            suggestedVideo = await aiAssistant.searchYouTubeVideo(
+              effectiveSearchQuery,
+              effectiveIsWorkRelated,
+            );
+          }
+        }
+
+        aiMessage = await aiAssistant.generateAIAnswer(
+          cleanMessage,
+          effectiveIsWorkRelated,
+          mediaContext,
+          finalFileUrl,
+        );
+
+        // Cache response for future text queries
+        if (!finalFileUrl && cleanMessage && aiMessage) {
+          await aiAssistant.setCachedAIAnswer(cleanMessage, aiMessage, suggestedVideo);
+        }
+      }
+
 
       // Create AiChat record in database FIRST so _id and createdAt exist
       let aiRecord = null;

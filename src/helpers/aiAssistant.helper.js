@@ -312,9 +312,60 @@ async function generateAIAnswer(
   }
 }
 
+function normalizeQuery(question) {
+  if (!question || typeof question !== 'string') return '';
+  return question
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s]/gi, '')
+    .replace(/\s+/g, ' ');
+}
+
+async function getCachedAIAnswer(question) {
+  const queryHash = normalizeQuery(question);
+  if (!queryHash) return null;
+
+  try {
+    const AiCache = require('../models/aiCache.model');
+    const cached = await AiCache.findOne({ queryHash });
+    if (cached) {
+      console.log(`[AI CACHE HIT] Served cached response for query: "${queryHash}"`);
+      return {
+        response: cached.response,
+        suggestedVideo: cached.suggestedVideo,
+        isCached: true,
+      };
+    }
+  } catch (err) {
+    console.error('[AI CACHE GET Error]:', err.message);
+  }
+  return null;
+}
+
+async function setCachedAIAnswer(question, response, suggestedVideo) {
+  const queryHash = normalizeQuery(question);
+  if (!queryHash || !response) return;
+
+  try {
+    const AiCache = require('../models/aiCache.model');
+    await AiCache.updateOne(
+      { queryHash },
+      { rawQuery: question, response, suggestedVideo },
+      { upsert: true },
+    );
+    console.log(`[AI CACHE SAVE] Cached response saved for query: "${queryHash}"`);
+  } catch (err) {
+    console.error('[AI CACHE SET Error]:', err.message);
+  }
+}
+
 module.exports = {
   isWorkRelatedQuestion,
   searchAiVideo,
   searchYouTubeVideo,
   generateAIAnswer,
+  getCachedAIAnswer,
+  setCachedAIAnswer,
+  normalizeQuery,
 };
+

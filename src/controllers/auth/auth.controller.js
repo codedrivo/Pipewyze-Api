@@ -216,6 +216,21 @@ const forgotPasswordResend = catchAsync(async (req, res, next) => {
   });
 });
 
+// Google Login
+const googleLogin = catchAsync(async (req, res) => {
+  const { idToken, role } = req.body;
+  const user = await service.googleLogin(idToken, role);
+  const tokens = await token.generateAuthTokens(user);
+
+  res.status(200).send({
+    message: 'Google login successful',
+    data: {
+      tokens,
+      user,
+    },
+  });
+});
+
 module.exports = {
   login,
   forgotPassword,
@@ -228,4 +243,6 @@ module.exports = {
   verifyPhoneOTP,
   notifyAdmin,
   register,
+  googleLogin,
 };
+
