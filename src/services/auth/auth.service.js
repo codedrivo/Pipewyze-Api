@@ -294,6 +294,64 @@ const addSupport = async (data) => {
   return Support.create(data);
 };
 
+const googleLogin = async (idToken, requestedRole = 'home-owner') => {
+  const { OAuth2Client } = require('google-auth-library');
+  const crypto = require('crypto');
+  const googleClientId = process.env.GOOGLE_CLIENT_ID;
+
+  let payload;
+  try {
+    const client = new OAuth2Client(googleClientId);
+    const ticket = await client.verifyIdToken({
+      idToken,
+      ...(googleClientId && { audience: googleClientId }),
+    });
+    payload = ticket.getPayload();
+  } catch (err) {
+    console.error('[GOOGLE AUTH ERROR]:', err.message);
+    throw new ApiError('Invalid Google ID token', 401);
+  }
+
+  const { sub: googleId, email, name, picture } = payload;
+  if (!email) {
+    throw new ApiError('Google account does not provide an email address', 400);
+  }
+
+  // Find user by googleId or email
+  let user = await User.findOne({
+    $or: [{ googleId }, { email: email.toLowerCase() }],
+  });
+
+  if (!user) {
+    // Create new user for Google login
+    const randomPassword = crypto.randomBytes(16).toString('hex') + 'A1!';
+    user = await User.create({
+      googleId,
+      email: email.toLowerCase(),
+      fullName: name || email.split('@')[0],
+      password: randomPassword,
+      role: requestedRole || 'home-owner',
+      profileimageurl: picture || '',
+      isOnline: true,
+    });
+  } else {
+    // Link googleId if missing
+    let isModified = false;
+    if (!user.googleId) {
+      user.googleId = googleId;
+      isModified = true;
+    }
+    if (picture && !user.profileimageurl) {
+      user.profileimageurl = picture;
+      isModified = true;
+    }
+    user.isOnline = true;
+    await user.save({ validateBeforeSave: false });
+  }
+
+  return getUserById(user._id);
+};
+
 module.exports = {
   createUser,
   loginUser,
@@ -310,4 +368,6 @@ module.exports = {
   listUser,
   findUserByPhone,
   addSupport,
+  googleLogin,
 };
+

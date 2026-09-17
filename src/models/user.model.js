@@ -37,6 +37,11 @@ const userSchema = new mongoose.Schema(
         }
       },
     },
+    googleId: {
+      type: String,
+      default: '',
+      index: true,
+    },
     role: {
       type: String,
       enum: ['admin', 'home-owner', 'apprentice', 'licensed-plumber'],
@@ -44,6 +49,7 @@ const userSchema = new mongoose.Schema(
     },
 
     password: {
+
       type: String,
       trim: true,
       minlength: 8,

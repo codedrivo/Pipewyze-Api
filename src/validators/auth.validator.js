@@ -108,6 +108,13 @@ const phoneVerify = Joi.object({
   phone: Joi.string().required(),
 });
 
+const googleLogin = Joi.object({
+  idToken: Joi.string().required(),
+  role: Joi.string()
+    .valid('home-owner', 'apprentice', 'licensed-plumber')
+    .default('home-owner'),
+});
+
 module.exports = {
   login,
   adminLogin,
@@ -122,4 +129,6 @@ module.exports = {
   verifyCtg,
   ctgreset,
   register,
+  googleLogin,
 };
+

@@ -67,9 +67,14 @@ router.post(
   controller.reset,
 );
 
-// router.post('/refresh-tokens', controller.refreshTokens); // Removed duplicate
+router.post(
+  '/google-login',
+  validator.body(validationSchema.googleLogin),
+  controller.googleLogin,
+);
 
 module.exports = router;
+
 
 /**
  * @swagger
