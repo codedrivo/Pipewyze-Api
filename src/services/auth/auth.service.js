@@ -309,7 +309,25 @@ const googleLogin = async (idToken, requestedRole = 'home-owner') => {
     payload = ticket.getPayload();
   } catch (err) {
     console.error('[GOOGLE AUTH ERROR]:', err.message);
-    throw new ApiError('Invalid Google ID token', 401);
+    // Fallback: Check if token is a Google Access Token from Flutter/mobile client
+    try {
+      const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      if (response.ok) {
+        const userInfo = await response.json();
+        payload = {
+          sub: userInfo.sub,
+          email: userInfo.email,
+          name: userInfo.name,
+          picture: userInfo.picture,
+        };
+      } else {
+        throw new ApiError('Invalid Google ID token', 401);
+      }
+    } catch (fallbackErr) {
+      throw new ApiError('Invalid Google ID token', 401);
+    }
   }
 
   const { sub: googleId, email, name, picture } = payload;
