@@ -4,6 +4,7 @@ const dashboardController = require('../../../controllers/public/home-owner/home
 const equipmentController = require('../../../controllers/public/home-owner/homeOwnerEquipment.controller');
 const equipmentCategoryController = require('../../../controllers/admin/equipmentCategory.controller');
 const auth = require('../../../middlewares/auth.middleware');
+const { requireFeaturePermission } = require('../../../middlewares/permission.middleware');
 const upload = require('../../../middlewares/multer.middleware');
 const ApiError = require('../../../helpers/apiErrorConverter');
 
@@ -29,18 +30,21 @@ router.get(
 router.get(
   '/equipment-categories',
   auth('home-owner'),
+  requireFeaturePermission('equipment'),
   equipmentCategoryController.getCategories,
 );
 
 router.get(
   '/equipment',
   auth('home-owner'),
+  requireFeaturePermission('equipment'),
   equipmentController.getMyEquipment,
 );
 
 router.post(
   '/equipment',
   auth('home-owner'),
+  requireFeaturePermission('equipment'),
   upload.single('image'),
   equipmentController.addMyEquipment,
 );

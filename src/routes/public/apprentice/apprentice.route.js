@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const controller = require('../../../controllers/public/apprentice/apprentice.controller');
 const auth = require('../../../middlewares/auth.middleware');
+const { requireFeaturePermission } = require('../../../middlewares/permission.middleware');
 const ApiError = require('../../../helpers/apiErrorConverter');
 
 const verifyOwnerOrAdmin = (req, res, next) => {
@@ -15,13 +16,19 @@ router
   .post(controller.createApprentice)
   .get(auth('admin'), controller.getApprentices);
 
-router.get('/maintenance-guides', auth(), controller.getMaintenanceGuides);
+router.get(
+  '/maintenance-guides',
+  auth(),
+  requireFeaturePermission('maintenance_guides'),
+  controller.getMaintenanceGuides
+);
 
 router.get('/dashboard', auth('apprentice'), controller.getDashboardSummary);
 
 router.get(
   '/maintenance-guides/:guideId',
   auth(),
+  requireFeaturePermission('maintenance_guides'),
   controller.getMaintenanceGuideById,
 );
 

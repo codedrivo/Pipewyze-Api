@@ -2,11 +2,13 @@ const router = require('express').Router();
 const EssentialTool = require('../../../models/essentialTool.model');
 const catchAsync = require('../../../helpers/asyncErrorHandler');
 const auth = require('../../../middlewares/auth.middleware');
+const { requireFeaturePermission } = require('../../../middlewares/permission.middleware');
 
 // Fetch all tools from the library (supports search filtering)
 router.get(
   '/',
   auth(),
+  requireFeaturePermission('essential_tools'),
   catchAsync(async (req, res) => {
     const { search } = req.query;
     const filter = {};
@@ -52,6 +54,7 @@ router.get(
 router.get(
   '/:id',
   auth(),
+  requireFeaturePermission('essential_tools'),
   catchAsync(async (req, res) => {
     const { role } = req.user;
     const filter = { _id: req.params.id };
