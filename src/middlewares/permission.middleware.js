@@ -17,6 +17,7 @@ const requireFeaturePermission = (featureKey) => {
       return next();
     }
 
+    /*
     const subscriptionDetails = await getUserSubscriptionDetails(req.user._id);
     const permissions = subscriptionDetails.permissions || {};
 
@@ -26,6 +27,7 @@ const requireFeaturePermission = (featureKey) => {
         403
       );
     }
+    */
 
     next();
   });
