@@ -22,8 +22,7 @@ const subscriptionSchema = new mongoose.Schema(
     },
     tier: {
       type: String,
-      enum: ['freemium', 'standard', 'professional'],
-      default: 'standard',
+      default: '',
       index: true,
     },
     orderId: {
