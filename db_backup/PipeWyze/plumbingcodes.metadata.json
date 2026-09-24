@@ -1,1 +1,0 @@
-{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"},{"v":{"$numberInt":"2"},"key":{"code":{"$numberInt":"1"}},"name":"code_1","background":true}],"uuid":"28ae7f4596214637aae4cf27bd7168ac","collectionName":"plumbingcodes","type":"collection"}
