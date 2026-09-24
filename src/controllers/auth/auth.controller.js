@@ -21,11 +21,15 @@ const notifyAdmin = catchAsync(async (req, res) => {
 const register = catchAsync(async (req, res, next) => {
   const user = await service.createUser(req.body);
   const tokens = await token.generateAuthTokens(user);
+  const { getUserSubscriptionDetails } = require('../../services/subscriptionTier.service');
+  const subscriptionDetails = await getUserSubscriptionDetails(user._id);
+
   res.status(201).send({
     message: 'Registration successful, please login',
     data: {
       tokens,
       user,
+      subscription: subscriptionDetails,
     },
   });
 });
@@ -38,11 +42,15 @@ const login = catchAsync(async (req, res, next) => {
 
   const tokens = await token.generateAuthTokens(user);
 
+  const { getUserSubscriptionDetails } = require('../../services/subscriptionTier.service');
+  const subscriptionDetails = await getUserSubscriptionDetails(user._id);
+
   res.status(200).send({
     message: 'Login successful',
     data: {
       tokens,
       user,
+      subscription: subscriptionDetails,
     },
   });
 });
@@ -222,11 +230,15 @@ const googleLogin = catchAsync(async (req, res) => {
   const user = await service.googleLogin(idToken, role);
   const tokens = await token.generateAuthTokens(user);
 
+  const { getUserSubscriptionDetails } = require('../../services/subscriptionTier.service');
+  const subscriptionDetails = await getUserSubscriptionDetails(user._id);
+
   res.status(200).send({
     message: 'Google login successful',
     data: {
       tokens,
       user,
+      subscription: subscriptionDetails,
     },
   });
 });

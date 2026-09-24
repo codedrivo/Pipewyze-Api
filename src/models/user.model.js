@@ -79,6 +79,11 @@ const userSchema = new mongoose.Schema(
         return true;
       },
     },
+    subscriptionTier: {
+      type: String,
+      enum: ['freemium', 'standard', 'professional'],
+      default: 'freemium',
+    },
   },
   {
     timestamps: true,

@@ -36,10 +36,46 @@ const userListFind = async (
     const users = await User.find(query)
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit);
+      .limit(limit)
+      .lean();
+
+    const AiChat = require('../../models/aiChat.model');
+    const Subscription = require('../../models/subscription.model');
+
+    const userIds = users.map((u) => u._id);
+
+    const aiCounts = await AiChat.aggregate([
+      { $match: { userId: { $in: userIds } } },
+      { $group: { _id: '$userId', count: { $sum: 1 } } },
+    ]);
+
+    const activeSubs = await Subscription.find({
+      userId: { $in: userIds },
+      status: { $in: ['active', 'trialing'] },
+    }).lean();
+
+    const aiCountMap = {};
+    aiCounts.forEach((item) => {
+      aiCountMap[item._id.toString()] = item.count;
+    });
+
+    const subMap = {};
+    activeSubs.forEach((sub) => {
+      subMap[sub.userId.toString()] = sub;
+    });
+
+    const usersWithAiInfo = users.map((u) => {
+      const uIdStr = u._id.toString();
+      return {
+        ...u,
+        aiUsageCount: aiCountMap[uIdStr] || 0,
+        isSubscribed: !!subMap[uIdStr],
+        subscriptionStatus: subMap[uIdStr] ? subMap[uIdStr].status : 'none',
+      };
+    });
 
     const userList = {
-      users,
+      users: usersWithAiInfo,
       page,
       limit,
       totalPages: Math.ceil(totalItems / limit),

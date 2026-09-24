@@ -26,6 +26,9 @@ const createUser = async (data) => {
     data.fullName = `${data.firstName} ${data.lastName || ''}`.trim();
   }
 
+  // Always default newly registered users to freemium tier
+  data.subscriptionTier = 'freemium';
+
   // Create user
   const user = await User.create(data);
   return getUserById(user._id);

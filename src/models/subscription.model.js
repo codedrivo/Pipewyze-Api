@@ -17,8 +17,14 @@ const subscriptionSchema = new mongoose.Schema(
     },
     planId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Plan',
+      ref: 'SubscriptionPlan',
       required: true,
+    },
+    tier: {
+      type: String,
+      enum: ['freemium', 'standard', 'professional'],
+      default: 'standard',
+      index: true,
     },
     orderId: {
       type: String,

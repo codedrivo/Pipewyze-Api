@@ -695,6 +695,8 @@ const ChatRoom = require('./models/chatRoom.model');
 const Message = require('./models/message.model');
 const User = require('./models/user.model');
 const AiChat = require('./models/aiChat.model');
+const Settings = require('./models/setting.model');
+const Subscription = require('./models/subscription.model');
 const notificationService = require('./services/notification.service');
 const aiAssistant = require('./helpers/aiAssistant.helper');
 
