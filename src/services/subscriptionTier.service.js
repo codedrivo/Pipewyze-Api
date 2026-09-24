@@ -33,11 +33,19 @@ const getUserSubscriptionDetails = async (userId) => {
   }
 
   // Build key-value feature permissions map for easy consumption on mobile client
-  const permissions = {};
+  const permissions = {
+    equipment: false,
+    essential_tools: false,
+    maintenance_guides: false,
+    plumbing_codes: false,
+    training_videos: false,
+    ai_assistant: false,
+  };
+
   if (activePlan && Array.isArray(activePlan.accessibleFeatures)) {
     activePlan.accessibleFeatures.forEach((feat) => {
       if (feat && feat.key) {
-        permissions[feat.key] = feat.enabled !== false;
+        permissions[feat.key] = feat.enabled === true;
       }
     });
   }
