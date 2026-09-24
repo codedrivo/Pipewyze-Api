@@ -2,11 +2,13 @@ const router = require('express').Router();
 const service = require('../../../services/admin/essentialTool.service');
 const catchAsync = require('../../../helpers/asyncErrorHandler');
 const auth = require('../../../middlewares/auth.middleware');
+const { requireFeaturePermission } = require('../../../middlewares/permission.middleware');
 const ApiError = require('../../../helpers/apiErrorConverter');
 
 router.get(
   '/',
   auth(),
+  requireFeaturePermission('essential_tools'),
   catchAsync(async (req, res) => {
     const query = {};
     if (
@@ -43,6 +45,7 @@ router.get(
 router.get(
   '/:id',
   auth(),
+  requireFeaturePermission('essential_tools'),
   catchAsync(async (req, res) => {
     const { role } = req.user;
     const tool = await service.getEssentialToolById(req.params.id);

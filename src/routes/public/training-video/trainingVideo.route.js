@@ -2,10 +2,12 @@ const router = require('express').Router();
 const service = require('../../../services/admin/trainingVideo.service');
 const catchAsync = require('../../../helpers/asyncErrorHandler');
 const auth = require('../../../middlewares/auth.middleware');
+const { requireFeaturePermission } = require('../../../middlewares/permission.middleware');
 
 router.get(
   '/',
   auth(),
+  requireFeaturePermission('training_videos'),
   catchAsync(async (req, res) => {
     const { role } = req.user;
     const query = {};
@@ -49,6 +51,7 @@ router.get(
 router.get(
   '/:id',
   auth(),
+  requireFeaturePermission('training_videos'),
   catchAsync(async (req, res) => {
     const video = await service.getTrainingVideoById(req.params.id);
     let videoJson = video.toJSON ? video.toJSON() : video;
