@@ -51,6 +51,9 @@ const getProfile = catchAsync(async (req, res, next) => {
   const userData = req.user.toJSON ? req.user.toJSON() : { ...req.user };
   delete userData.password;
 
+  const { getUserSubscriptionDetails } = require('../../services/subscriptionTier.service');
+  const subscriptionDetails = await getUserSubscriptionDetails(req.user._id);
+
   if (userData.role === 'licensed-plumber') {
     const plumberService = require('../../services/public/licensed-plumber/licensedPlumber.service');
     try {
@@ -62,6 +65,7 @@ const getProfile = catchAsync(async (req, res, next) => {
         message: 'Profile retrieved successfully',
         data: {
           user: plumberData,
+          subscription: subscriptionDetails,
         },
       });
       return;
@@ -74,6 +78,7 @@ const getProfile = catchAsync(async (req, res, next) => {
     message: 'Profile retrieved successfully',
     data: {
       user: userData,
+      subscription: subscriptionDetails,
     },
   });
 });

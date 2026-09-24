@@ -1,0 +1,1 @@
+{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"}],"uuid":"d147066cda5f465f8b6e777d487fac65","collectionName":"maintenanceguides","type":"collection"}

@@ -13,11 +13,16 @@ const ApiError = require('./helpers/apiErrorConverter');
 const swaggerUi = require('swagger-ui-express');
 const specs = require('../swagger'); // Path to your swagger.js file
 const path = require('path');
+const stripeWebhookRoute = require('./routes/webhook/stripe.route');
+
 // initialize express app
 const app = express();
 // log requests to console
 app.use(morgan.successHandler);
 app.use(morgan.errorHandler);
+
+// Stripe Webhook endpoint (must be before express.json body parser)
+app.use('/webhook/stripe', stripeWebhookRoute);
 
 // only content type application/json allowed
 app.use(express.json());

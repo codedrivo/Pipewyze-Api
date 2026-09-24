@@ -82,5 +82,10 @@ module.exports = {
     S3_BUCKET_PATH: envVars.S3_BUCKET_PATH,
     cloudfrontUrl: envVars.AWS_CLOUDFRONT_URL,
   },
+  stripe: {
+    publishableKey: envVars.STRIPE_PUBLISHABLE_KEY || '',
+    secretKey: envVars.STRIPE_SECRET_KEY || '',
+    webhookSecret: envVars.STRIPE_WEBHOOK_SECRET || '',
+  },
   chatRoomCleanupMinutes: envVars.CHAT_ROOM_CLEANUP_MINUTES,
 };

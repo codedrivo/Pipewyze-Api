@@ -15,6 +15,8 @@ const adminPlumbingCodeCategoryRoute = require('./admin/plumbingCodeCategory.rou
 const adminMaintenanceGuideRoute = require('./admin/maintenanceGuide.route');
 const adminTrainingVideoRoute = require('./admin/trainingVideo.route');
 const adminAiVideoRoute = require('./admin/aiVideo.route');
+const adminAiPromptRoute = require('./admin/aiPrompt.route');
+const adminSubscriptionPlanRoute = require('./admin/subscriptionPlan.route');
 const adminFaqRoute = require('./admin/faq.route');
 const adminSupportRoute = require('./admin/support.route');
 const profileRoute = require('./profile/profile.route');
@@ -30,6 +32,8 @@ const savedResourceRoute = require('./public/saved-resource/savedResource.route'
 const toolsLibraryRoute = require('./public/tools-library/toolsLibrary.route');
 const trainingVideoPublicRoute = require('./public/training-video/trainingVideo.route');
 const aiVideoPublicRoute = require('./public/ai-video/aiVideo.route');
+const aiPromptPublicRoute = require('./public/ai-prompt/aiPrompt.route');
+const subscriptionPlanPublicRoute = require('./public/subscription-plan/subscriptionPlan.route');
 const faqPublicRoute = require('./public/faq/faq.route');
 
 // all routes
@@ -50,6 +54,8 @@ router.use('/admin/plumbing-code-category', adminPlumbingCodeCategoryRoute);
 router.use('/admin/maintenance-guide', adminMaintenanceGuideRoute);
 router.use('/admin/training-video', adminTrainingVideoRoute);
 router.use('/admin/ai-videos', adminAiVideoRoute);
+router.use('/admin/ai-prompts', adminAiPromptRoute);
+router.use('/admin/subscription-plans', adminSubscriptionPlanRoute);
 router.use('/admin/faq', adminFaqRoute);
 router.use('/admin/support', adminSupportRoute);
 router.use('/', pageRoute);
@@ -67,6 +73,8 @@ router.use('/public/saved-resources', savedResourceRoute);
 router.use('/public/tools-library', toolsLibraryRoute);
 router.use('/public/training-videos', trainingVideoPublicRoute);
 router.use('/public/ai-videos', aiVideoPublicRoute);
+router.use('/public/ai-prompts', aiPromptPublicRoute);
+router.use('/public/subscription-plans', subscriptionPlanPublicRoute);
 router.use('/public/faq', faqPublicRoute);
 
 module.exports = router;
