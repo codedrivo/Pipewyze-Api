@@ -45,12 +45,16 @@ const login = catchAsync(async (req, res, next) => {
   const { getUserSubscriptionDetails } = require('../../services/subscriptionTier.service');
   const subscriptionDetails = await getUserSubscriptionDetails(user._id);
 
+  const userObj = {
+    ...user.toObject(),
+    permissions: subscriptionDetails.permissions,
+  };
+
   res.status(200).send({
     message: 'Login successful',
     data: {
       tokens,
-      user,
-      subscription: subscriptionDetails,
+      user: userObj,
     },
   });
 });
@@ -233,12 +237,16 @@ const googleLogin = catchAsync(async (req, res) => {
   const { getUserSubscriptionDetails } = require('../../services/subscriptionTier.service');
   const subscriptionDetails = await getUserSubscriptionDetails(user._id);
 
+  const userObj = {
+    ...user.toObject(),
+    permissions: subscriptionDetails.permissions,
+  };
+
   res.status(200).send({
     message: 'Google login successful',
     data: {
       tokens,
-      user,
-      subscription: subscriptionDetails,
+      user: userObj,
     },
   });
 });
