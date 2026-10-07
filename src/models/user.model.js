@@ -79,6 +79,10 @@ const userSchema = new mongoose.Schema(
         return true;
       },
     },
+    stripeCustomerId: {
+      type: String,
+      default: '',
+    },
     subscriptionTier: {
       type: String,
       enum: ['freemium', 'standard', 'professional'],
