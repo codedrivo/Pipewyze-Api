@@ -30,6 +30,20 @@ const plumbingCodeSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    documents: [
+      {
+        name: String,
+        url: String,
+      },
+    ],
+    documentName: {
+      type: String,
+      default: '',
+    },
+    documentUrl: {
+      type: String,
+      default: '',
+    },
   },
   {
     timestamps: true,

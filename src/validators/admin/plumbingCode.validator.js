@@ -7,6 +7,16 @@ const createPlumbingCode = Joi.object({
   description: Joi.string().required(),
   exception: Joi.string().allow('', null).optional(),
   plainLanguageInterpretation: Joi.string().required(),
+  documentName: Joi.string().allow('', null).optional(),
+  documentUrl: Joi.string().allow('', null).optional(),
+  documents: Joi.array()
+    .items(
+      Joi.object({
+        name: Joi.string().allow('', null).optional(),
+        url: Joi.string().allow('', null).optional(),
+      }),
+    )
+    .optional(),
 });
 
 const updatePlumbingCode = Joi.object({
@@ -16,6 +26,16 @@ const updatePlumbingCode = Joi.object({
   description: Joi.string().optional(),
   exception: Joi.string().allow('', null).optional(),
   plainLanguageInterpretation: Joi.string().optional(),
+  documentName: Joi.string().allow('', null).optional(),
+  documentUrl: Joi.string().allow('', null).optional(),
+  documents: Joi.array()
+    .items(
+      Joi.object({
+        name: Joi.string().allow('', null).optional(),
+        url: Joi.string().allow('', null).optional(),
+      }),
+    )
+    .optional(),
 });
 
 const singleId = Joi.object({
