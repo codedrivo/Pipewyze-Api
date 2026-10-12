@@ -34,6 +34,12 @@ router.delete(
 router.get('/plans', controller.getServicePlans);
 router.get('/my-plan', controller.getUserServicePlan);
 
+router.post(
+  '/subscribe',
+  validator.body(validationSchema.subscribe),
+  controller.subscribePlan,
+);
+
 module.exports = router;
 
 /**
