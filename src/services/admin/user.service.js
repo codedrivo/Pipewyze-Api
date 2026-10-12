@@ -52,7 +52,9 @@ const userListFind = async (
     const activeSubs = await Subscription.find({
       userId: { $in: userIds },
       status: { $in: ['active', 'trialing'] },
-    }).lean();
+    })
+      .populate('planId', 'name monthlyPrice yearlyPrice tier')
+      .lean();
 
     const aiCountMap = {};
     aiCounts.forEach((item) => {
@@ -66,11 +68,13 @@ const userListFind = async (
 
     const usersWithAiInfo = users.map((u) => {
       const uIdStr = u._id.toString();
+      const userSub = subMap[uIdStr];
       return {
         ...u,
         aiUsageCount: aiCountMap[uIdStr] || 0,
-        isSubscribed: !!subMap[uIdStr],
-        subscriptionStatus: subMap[uIdStr] ? subMap[uIdStr].status : 'none',
+        isSubscribed: !!userSub,
+        subscriptionStatus: userSub ? userSub.status : 'none',
+        activePlan: userSub ? userSub.planId : null,
       };
     });
 

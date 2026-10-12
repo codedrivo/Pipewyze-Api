@@ -16,8 +16,8 @@ const getDashboardData = catchAsync(async (req, res, next) => {
 
   // Recent Subscriptions/Transactions
   const recentTransactions = await Subscription.find()
-    .populate('userId', 'firstName lastName email subscriptionTier profileimageurl')
-    .populate('planId', 'name monthlyPrice yearlyPrice tier')
+    .populate('userId', 'firstName lastName email subscriptionTier profileimageurl phone role')
+    .populate('planId', 'name monthlyPrice yearlyPrice tier description features accessibleFeatures trialDays')
     .sort({ createdAt: -1 })
     .limit(100);
 
@@ -84,6 +84,43 @@ const getDashboardData = catchAsync(async (req, res, next) => {
   });
 });
 
+const mongoose = require('mongoose');
+
+const getTransactionDetails = catchAsync(async (req, res, next) => {
+  const { id } = req.params;
+
+  if (!id || id === 'undefined') {
+    return res.status(400).json({
+      status: 400,
+      message: 'Invalid transaction ID provided',
+    });
+  }
+
+  let query;
+  if (mongoose.Types.ObjectId.isValid(id)) {
+    query = { _id: id };
+  } else {
+    query = { orderId: id };
+  }
+
+  const transaction = await Subscription.findOne(query)
+    .populate('userId', 'firstName lastName email subscriptionTier profileimageurl phone role')
+    .populate('planId', 'name monthlyPrice yearlyPrice tier description features accessibleFeatures trialDays');
+
+  if (!transaction) {
+    return res.status(404).json({
+      status: 404,
+      message: 'Transaction not found',
+    });
+  }
+
+  res.status(200).json({
+    status: 200,
+    data: transaction,
+  });
+});
+
 module.exports = {
   getDashboardData,
+  getTransactionDetails,
 };
