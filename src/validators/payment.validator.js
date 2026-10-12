@@ -19,8 +19,17 @@ const paymentMethodParams = Joi.object({
   }),
 });
 
+const subscribe = Joi.object({
+  planId: Joi.string().required().messages({
+    'any.required': 'planId is required',
+  }),
+  billingCycle: Joi.string().valid('monthly', 'yearly').default('monthly'),
+  paymentMethodId: Joi.string().optional(),
+});
+
 module.exports = {
   attachCard,
   setDefaultCard,
   paymentMethodParams,
+  subscribe,
 };

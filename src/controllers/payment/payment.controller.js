@@ -231,8 +231,31 @@ const deleteCard = catchAsync(async (req, res) => {
   }
 
   const { paymentMethodId } = req.params;
+  const customerId = await getOrCreateStripeCustomer(req.user);
 
+  // Retrieve payment method to verify ownership
+  const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
+  if (!paymentMethod || paymentMethod.customer !== customerId) {
+    throw new ApiError('Card not found for this user', 404);
+  }
+
+  // Detach card from Stripe customer
   await stripe.paymentMethods.detach(paymentMethodId);
+
+  // If the deleted card was the default, assign next available card as default
+  const customer = await stripe.customers.retrieve(customerId);
+  if (customer.invoice_settings?.default_payment_method === paymentMethodId) {
+    const remainingCards = await stripe.paymentMethods.list({
+      customer: customerId,
+      type: 'card',
+    });
+    const nextDefault = remainingCards.data?.[0]?.id || '';
+    await stripe.customers.update(customerId, {
+      invoice_settings: {
+        default_payment_method: nextDefault,
+      },
+    });
+  }
 
   res.status(200).json({
     status: 'success',
@@ -271,6 +294,114 @@ const getUserServicePlan = catchAsync(async (req, res) => {
   });
 });
 
+const { syncUserSubscriptionTier } = require('../../services/subscriptionTier.service');
+
+/**
+ * Pay / Subscribe to a plan using user's saved card or specified paymentMethodId
+ */
+const subscribePlan = catchAsync(async (req, res) => {
+  if (!stripe) {
+    throw new ApiError('Stripe configuration missing', 500);
+  }
+
+  const { planId, billingCycle = 'monthly', paymentMethodId } = req.body;
+  const user = req.user;
+
+  // 1. Fetch Plan
+  const plan = await SubscriptionPlan.findById(planId);
+  if (!plan) {
+    throw new ApiError('Subscription plan not found', 404);
+  }
+
+  const customerId = await getOrCreateStripeCustomer(user);
+
+  // 2. Determine payment method to charge
+  let defaultPaymentMethodId = paymentMethodId;
+  if (!defaultPaymentMethodId) {
+    const customer = await stripe.customers.retrieve(customerId);
+    defaultPaymentMethodId = customer.invoice_settings?.default_payment_method;
+  }
+
+  if (!defaultPaymentMethodId) {
+    // Check if customer has any saved card
+    const pms = await stripe.paymentMethods.list({ customer: customerId, type: 'card' });
+    if (pms.data && pms.data.length > 0) {
+      defaultPaymentMethodId = pms.data[0].id;
+    }
+  }
+
+  if (!defaultPaymentMethodId) {
+    throw new ApiError('No payment method attached. Please add a card first.', 400);
+  }
+
+  const amount = billingCycle === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice;
+  const priceInCents = Math.round(Number(amount) * 100);
+
+  let paymentIntentId = `pi_local_${Date.now()}`;
+
+  // 3. Process Stripe Payment Intent if price > 0
+  if (priceInCents > 0) {
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: priceInCents,
+      currency: 'usd',
+      customer: customerId,
+      payment_method: defaultPaymentMethodId,
+      off_session: true,
+      confirm: true,
+      description: `Payment for ${plan.name} (${billingCycle})`,
+      metadata: {
+        userId: user._id.toString(),
+        planId: plan._id.toString(),
+        tier: plan.tier || 'standard',
+      },
+    });
+    paymentIntentId = paymentIntent.id;
+  }
+
+  // 4. Update / Save Subscription in Database
+  const orderId = `ORD-${Date.now()}`;
+  const now = new Date();
+  const periodEnd = new Date(now);
+  if (billingCycle === 'yearly') {
+    periodEnd.setFullYear(periodEnd.getFullYear() + 1);
+  } else {
+    periodEnd.setMonth(periodEnd.getMonth() + 1);
+  }
+
+  const subscriptionData = {
+    userId: user._id,
+    planId: plan._id,
+    tier: plan.tier || 'standard',
+    orderId,
+    stripeCustomerId: customerId,
+    stripeSubscriptionId: paymentIntentId,
+    status: 'active',
+    startDate: now,
+    currentPeriodStart: now,
+    currentPeriodEnd: periodEnd,
+  };
+
+  const subscription = await Subscription.findOneAndUpdate(
+    { userId: user._id },
+    subscriptionData,
+    { upsert: true, new: true }
+  );
+
+  // Sync user subscription tier
+  await syncUserSubscriptionTier(user._id);
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Payment completed and subscription activated successfully',
+    data: {
+      subscription,
+      tier: plan.tier || 'standard',
+      orderId,
+      paymentIntentId,
+    },
+  });
+});
+
 module.exports = {
   createSetupIntent,
   attachCard,
@@ -279,4 +410,5 @@ module.exports = {
   deleteCard,
   getServicePlans,
   getUserServicePlan,
+  subscribePlan,
 };
