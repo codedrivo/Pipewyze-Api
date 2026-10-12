@@ -96,25 +96,52 @@ const attachCard = catchAsync(async (req, res) => {
   const { paymentMethodId, setAsDefault } = req.body;
   const customerId = await getOrCreateStripeCustomer(req.user);
 
-  // Attach PaymentMethod to Customer
-  const paymentMethod = await stripe.paymentMethods.attach(paymentMethodId, {
-    customer: customerId,
-  });
+  // 1. Retrieve the PaymentMethod
+  let paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
 
-  // Fetch current customer to check default payment method
-  const customer = await stripe.customers.retrieve(customerId);
-  const currentDefault = customer.invoice_settings?.default_payment_method;
+  // 2. If it is attached to a different customer, detach it first
+  if (paymentMethod.customer && paymentMethod.customer !== customerId) {
+    try {
+      await stripe.paymentMethods.detach(paymentMethodId);
+    } catch (detachErr) {
+      console.warn('[Stripe attachCard] Could not detach from old customer:', detachErr.message);
+    }
+  }
 
+  // 3. Attach PaymentMethod to the target customer if not already attached
+  if (paymentMethod.customer !== customerId) {
+    try {
+      paymentMethod = await stripe.paymentMethods.attach(paymentMethodId, {
+        customer: customerId,
+      });
+    } catch (attachErr) {
+      console.warn('[Stripe attachCard] Attach warning:', attachErr.message);
+      // Re-retrieve to check if it got attached anyway
+      paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
+    }
+  }
+
+  // 4. Update customer default payment method safely
   let isDefault = false;
-  if (setAsDefault || !currentDefault) {
-    await stripe.customers.update(customerId, {
-      invoice_settings: {
-        default_payment_method: paymentMethodId,
-      },
-    });
-    isDefault = true;
-  } else {
-    isDefault = currentDefault === paymentMethodId;
+  if (paymentMethod.customer === customerId) {
+    const customer = await stripe.customers.retrieve(customerId);
+    const currentDefault = customer.invoice_settings?.default_payment_method;
+
+    if (setAsDefault || !currentDefault) {
+      try {
+        await stripe.customers.update(customerId, {
+          invoice_settings: {
+            default_payment_method: paymentMethodId,
+          },
+        });
+        isDefault = true;
+      } catch (updateErr) {
+        console.warn('[Stripe attachCard] Could not set default_payment_method:', updateErr.message);
+        isDefault = false;
+      }
+    } else {
+      isDefault = currentDefault === paymentMethodId;
+    }
   }
 
   const card = paymentMethod.card || {};
