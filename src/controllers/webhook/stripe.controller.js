@@ -9,7 +9,7 @@ if (config.stripe.secretKey) {
 }
 
 const handleStripeWebhook = async (req, res) => {
-  const sig = req.headers['stripe-signature'];
+  const sig = req.headers ? req.headers['stripe-signature'] : undefined;
   let event;
 
   try {
@@ -73,6 +73,7 @@ const handleStripeWebhook = async (req, res) => {
           });
 
           if (sub) {
+            // Update active subscription status and billing periods
             sub.status = 'active';
             if (invoice.lines?.data?.[0]?.period) {
               sub.currentPeriodStart = new Date(invoice.lines.data[0].period.start * 1000);
@@ -80,6 +81,27 @@ const handleStripeWebhook = async (req, res) => {
             }
             await sub.save();
             await syncUserSubscriptionTier(sub.userId);
+
+            // Automatically generate a new Order record for this recurring invoice cycle (must start with ORD-)
+            const recurringOrderId = `ORD-${Date.now()}`;
+            const existingOrder = await Subscription.findOne({ orderId: recurringOrderId });
+            if (!existingOrder) {
+              await Subscription.create({
+                userId: sub.userId,
+                serviceId: sub.serviceId,
+                planId: sub.planId,
+                tier: sub.tier,
+                orderId: recurringOrderId,
+                stripeCustomerId: customerId || sub.stripeCustomerId,
+                stripeSubscriptionId: subscriptionId,
+                status: 'active',
+                startDate: new Date((invoice.created || Math.floor(Date.now() / 1000)) * 1000),
+                currentPeriodStart: sub.currentPeriodStart || new Date(),
+                currentPeriodEnd: sub.currentPeriodEnd || new Date(Date.now() + 24 * 60 * 60 * 1000),
+              });
+              console.log(`[Stripe Webhook] Generated new recurring order: ${recurringOrderId} for subscription ${subscriptionId}`);
+            }
+
             console.log(`[Stripe Webhook] invoice.payment_succeeded processed for subscription ${subscriptionId}`);
           }
         }
