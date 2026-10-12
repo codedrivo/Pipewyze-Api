@@ -381,23 +381,54 @@ const subscribePlan = catchAsync(async (req, res) => {
     currentPeriodEnd: periodEnd,
   };
 
-  const subscription = await Subscription.findOneAndUpdate(
+  let subscription = await Subscription.findOneAndUpdate(
     { userId: user._id },
     subscriptionData,
     { upsert: true, new: true }
-  );
+  )
+    .populate('userId', 'firstName lastName email subscriptionTier profileimageurl')
+    .populate('planId', 'name monthlyPrice yearlyPrice tier');
 
   // Sync user subscription tier
   await syncUserSubscriptionTier(user._id);
+
+  // Retrieve card details that were charged
+  let chargedCard = null;
+  try {
+    const pm = await stripe.paymentMethods.retrieve(defaultPaymentMethodId);
+    if (pm && pm.card) {
+      chargedCard = {
+        brand: pm.card.brand,
+        last4: pm.card.last4,
+        expMonth: pm.card.exp_month,
+        expYear: pm.card.exp_year,
+      };
+    }
+  } catch (pmErr) {
+    console.warn('[subscribePlan] Could not retrieve card details:', pmErr.message);
+  }
 
   res.status(200).json({
     status: 'success',
     message: 'Payment completed and subscription activated successfully',
     data: {
-      subscription,
-      tier: plan.tier || 'standard',
       orderId,
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.fullName || `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+        subscriptionTier: plan.tier || 'standard',
+      },
+      plan: {
+        id: plan._id,
+        name: plan.name,
+        tier: plan.tier,
+        billingCycle,
+        amount,
+      },
+      chargedCard,
       paymentIntentId,
+      subscription,
     },
   });
 });
