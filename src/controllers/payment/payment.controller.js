@@ -295,6 +295,7 @@ const getUserServicePlan = catchAsync(async (req, res) => {
 });
 
 const { syncUserSubscriptionTier } = require('../../services/subscriptionTier.service');
+const { generateUniqueOrderId } = require('../../helpers/orderId.helper');
 
 /**
  * Pay / Subscribe to a plan using user's saved card or specified paymentMethodId
@@ -337,36 +338,133 @@ const subscribePlan = catchAsync(async (req, res) => {
   const amount = billingCycle === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice;
   const priceInCents = Math.round(Number(amount) * 100);
 
-  let paymentIntentId = `pi_local_${Date.now()}`;
+  const isOneTime =
+    plan.name.toLowerCase().includes('one-time') ||
+    plan.name.toLowerCase().includes('onetime');
+  const isDaily =
+    plan.name.toLowerCase().includes('/day') ||
+    plan.name.toLowerCase().includes('daily');
 
-  // 3. Process Stripe Payment Intent if price > 0
-  if (priceInCents > 0) {
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: priceInCents,
-      currency: 'usd',
-      customer: customerId,
-      payment_method: defaultPaymentMethodId,
-      off_session: true,
-      confirm: true,
-      description: `Payment for ${plan.name} (${billingCycle})`,
-      metadata: {
-        userId: user._id.toString(),
-        planId: plan._id.toString(),
-        tier: plan.tier || 'standard',
-      },
-    });
-    paymentIntentId = paymentIntent.id;
+  let interval = 'month';
+  if (isDaily) {
+    interval = 'day';
+  } else if (billingCycle === 'yearly') {
+    interval = 'year';
+  } else {
+    interval = 'month';
   }
 
-  // 4. Update / Save Subscription in Database
-  const orderId = `ORD-${Date.now()}`;
   const now = new Date();
   const periodEnd = new Date(now);
-  if (billingCycle === 'yearly') {
+  if (isDaily) {
+    periodEnd.setDate(periodEnd.getDate() + 1);
+  } else if (billingCycle === 'yearly') {
     periodEnd.setFullYear(periodEnd.getFullYear() + 1);
   } else {
     periodEnd.setMonth(periodEnd.getMonth() + 1);
   }
+
+  let paymentIntentId = `pi_local_${Date.now()}`;
+  let stripeSubscriptionId = '';
+
+  // 3. Process payment / subscription in Stripe if price > 0
+  if (priceInCents > 0) {
+    if (isOneTime) {
+      // One-time payment intent
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: priceInCents,
+        currency: 'usd',
+        customer: customerId,
+        payment_method: defaultPaymentMethodId,
+        off_session: true,
+        confirm: true,
+        description: `Payment for ${plan.name} (${billingCycle})`,
+        metadata: {
+          userId: user._id.toString(),
+          planId: plan._id.toString(),
+          tier: plan.tier || 'standard',
+        },
+      });
+      paymentIntentId = paymentIntent.id;
+      stripeSubscriptionId = paymentIntent.id;
+    } else {
+      // Recurring Subscription
+      const configuredPriceId =
+        billingCycle === 'yearly'
+          ? plan.stripeYearlyPriceId
+          : plan.stripeMonthlyPriceId;
+
+      let subscriptionItem;
+      if (configuredPriceId) {
+        subscriptionItem = { price: configuredPriceId };
+      } else {
+        // Ensure a Stripe Product exists for this plan
+        let stripeProduct;
+        try {
+          const productList = await stripe.products.list({ limit: 50, active: true });
+          stripeProduct = productList.data.find((p) => p.name === plan.name);
+          if (!stripeProduct) {
+            stripeProduct = await stripe.products.create({
+              name: plan.name,
+              metadata: {
+                planId: plan._id.toString(),
+                tier: plan.tier || 'standard',
+              },
+            });
+          }
+        } catch (prodErr) {
+          console.warn('[subscribePlan] Product search/creation warning:', prodErr.message);
+          stripeProduct = await stripe.products.create({ name: plan.name });
+        }
+
+        subscriptionItem = {
+          price_data: {
+            currency: 'usd',
+            product: stripeProduct.id,
+            unit_amount: priceInCents,
+            recurring: { interval },
+          },
+        };
+      }
+
+      // Cancel any existing active Stripe recurring subscription for this user
+      const existingSub = await Subscription.findOne({
+        userId: user._id,
+        stripeSubscriptionId: { $regex: /^sub_/ },
+      });
+      if (existingSub && existingSub.stripeSubscriptionId) {
+        try {
+          await stripe.subscriptions.cancel(existingSub.stripeSubscriptionId);
+        } catch (cancelErr) {
+          console.warn('[subscribePlan] Note: could not cancel old subscription:', cancelErr.message);
+        }
+      }
+
+      // Create Stripe Subscription
+      const stripeSub = await stripe.subscriptions.create({
+        customer: customerId,
+        items: [subscriptionItem],
+        default_payment_method: defaultPaymentMethodId,
+        expand: ['latest_invoice.payment_intent'],
+        metadata: {
+          userId: user._id.toString(),
+          planId: plan._id.toString(),
+          tier: plan.tier || 'standard',
+          billingCycle,
+          interval,
+        },
+      });
+
+      stripeSubscriptionId = stripeSub.id;
+      paymentIntentId =
+        stripeSub.latest_invoice?.payment_intent?.id ||
+        stripeSub.latest_invoice?.id ||
+        stripeSub.id;
+    }
+  }
+
+  // 4. Update / Save Subscription in Database with 5-digit unique order ID
+  const orderId = await generateUniqueOrderId();
 
   const subscriptionData = {
     userId: user._id,
@@ -374,7 +472,7 @@ const subscribePlan = catchAsync(async (req, res) => {
     tier: plan.tier || 'standard',
     orderId,
     stripeCustomerId: customerId,
-    stripeSubscriptionId: paymentIntentId,
+    stripeSubscriptionId,
     status: 'active',
     startDate: now,
     currentPeriodStart: now,
@@ -428,8 +526,45 @@ const subscribePlan = catchAsync(async (req, res) => {
       },
       chargedCard,
       paymentIntentId,
+      stripeSubscriptionId,
       subscription,
     },
+  });
+});
+
+/**
+ * Cancel the current user's active recurring subscription
+ */
+const cancelSubscription = catchAsync(async (req, res) => {
+  const user = req.user;
+  const sub = await Subscription.findOne({
+    userId: user._id,
+    status: { $in: ['active', 'trialing'] },
+  });
+
+  if (!sub) {
+    throw new ApiError('No active subscription found to cancel', 404);
+  }
+
+  // Cancel in Stripe if recurring subscription exists
+  if (stripe && sub.stripeSubscriptionId && sub.stripeSubscriptionId.startsWith('sub_')) {
+    try {
+      await stripe.subscriptions.cancel(sub.stripeSubscriptionId);
+    } catch (err) {
+      console.warn('[cancelSubscription] Stripe cancellation error:', err.message);
+    }
+  }
+
+  sub.status = 'canceled';
+  sub.canceledAt = new Date();
+  await sub.save();
+
+  await syncUserSubscriptionTier(user._id);
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Subscription canceled successfully',
+    data: sub,
   });
 });
 
@@ -442,4 +577,5 @@ module.exports = {
   getServicePlans,
   getUserServicePlan,
   subscribePlan,
+  cancelSubscription,
 };

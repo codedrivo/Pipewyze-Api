@@ -2,6 +2,7 @@ const config = require('../../config/config');
 const User = require('../../models/user.model');
 const Subscription = require('../../models/subscription.model');
 const { syncUserSubscriptionTier } = require('../../services/subscriptionTier.service');
+const { generateUniqueOrderId } = require('../../helpers/orderId.helper');
 
 let stripe;
 if (config.stripe.secretKey) {
@@ -39,11 +40,12 @@ const handleStripeWebhook = async (req, res) => {
         const tier = session.metadata?.tier || 'standard';
 
         if (userId) {
+          const orderId = await generateUniqueOrderId();
           const subscriptionData = {
             userId,
             planId: planId || undefined,
             tier,
-            orderId: session.id || `ORD-${Date.now()}`,
+            orderId,
             stripeCustomerId: session.customer || '',
             stripeSubscriptionId: session.subscription || session.id || '',
             status: 'active',
@@ -70,7 +72,7 @@ const handleStripeWebhook = async (req, res) => {
         if (subscriptionId) {
           const sub = await Subscription.findOne({
             $or: [{ stripeSubscriptionId: subscriptionId }, { stripeCustomerId: customerId }],
-          });
+          }).sort({ createdAt: -1 });
 
           if (sub) {
             // Update active subscription status and billing periods
@@ -79,13 +81,30 @@ const handleStripeWebhook = async (req, res) => {
               sub.currentPeriodStart = new Date(invoice.lines.data[0].period.start * 1000);
               sub.currentPeriodEnd = new Date(invoice.lines.data[0].period.end * 1000);
             }
+            if (!sub.stripeSubscriptionId) {
+              sub.stripeSubscriptionId = subscriptionId;
+            }
             await sub.save();
             await syncUserSubscriptionTier(sub.userId);
 
-            // Automatically generate a new Order record for this recurring invoice cycle (must start with ORD-)
-            const recurringOrderId = `ORD-${Date.now()}`;
-            const existingOrder = await Subscription.findOne({ orderId: recurringOrderId });
-            if (!existingOrder) {
+            // Automatically generate a new Order record for this recurring invoice cycle (must be ORD- with 5 digits)
+            const isInitialCreation = invoice.billing_reason === 'subscription_create';
+            const periodStart = invoice.lines?.data?.[0]?.period?.start
+              ? new Date(invoice.lines.data[0].period.start * 1000)
+              : sub.currentPeriodStart || new Date();
+            const periodEnd = invoice.lines?.data?.[0]?.period?.end
+              ? new Date(invoice.lines.data[0].period.end * 1000)
+              : sub.currentPeriodEnd || new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+            // Check if an order for this subscription cycle already exists
+            const existingOrderForPeriod = await Subscription.findOne({
+              stripeSubscriptionId: subscriptionId,
+              currentPeriodStart: periodStart,
+              _id: { $ne: sub._id },
+            });
+
+            if (!existingOrderForPeriod && !isInitialCreation) {
+              const recurringOrderId = await generateUniqueOrderId();
               await Subscription.create({
                 userId: sub.userId,
                 serviceId: sub.serviceId,
@@ -96,8 +115,8 @@ const handleStripeWebhook = async (req, res) => {
                 stripeSubscriptionId: subscriptionId,
                 status: 'active',
                 startDate: new Date((invoice.created || Math.floor(Date.now() / 1000)) * 1000),
-                currentPeriodStart: sub.currentPeriodStart || new Date(),
-                currentPeriodEnd: sub.currentPeriodEnd || new Date(Date.now() + 24 * 60 * 60 * 1000),
+                currentPeriodStart: periodStart,
+                currentPeriodEnd: periodEnd,
               });
               console.log(`[Stripe Webhook] Generated new recurring order: ${recurringOrderId} for subscription ${subscriptionId}`);
             }
