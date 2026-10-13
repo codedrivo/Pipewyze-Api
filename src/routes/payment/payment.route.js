@@ -40,6 +40,8 @@ router.post(
   controller.subscribePlan,
 );
 
+router.post('/cancel', controller.cancelSubscription);
+
 module.exports = router;
 
 /**

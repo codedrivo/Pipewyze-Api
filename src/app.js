@@ -23,6 +23,7 @@ app.use(morgan.errorHandler);
 
 // Stripe Webhook endpoint (must be before express.json body parser)
 app.use('/webhook/stripe', stripeWebhookRoute);
+app.use('/v1/webhook/stripe', stripeWebhookRoute);
 
 // only content type application/json allowed
 app.use(express.json());
