@@ -6,10 +6,13 @@ const SubscriptionPlan = require('../models/subscriptionPlan.model');
  * Resolves the active subscription tier and plan details for a user.
  */
 const getUserSubscriptionDetails = async (userId) => {
-  const activeSubscription = await Subscription.findOne({
-    userId,
-    status: { $in: ['active', 'trialing'] },
-  }).populate('planId');
+  const [activeSubscription, latestSubscription] = await Promise.all([
+    Subscription.findOne({
+      userId,
+      status: { $in: ['active', 'trialing'] },
+    }).populate('planId'),
+    Subscription.findOne({ userId }).sort({ createdAt: -1 }).populate('planId'),
+  ]);
 
   let activePlan = null;
   let tier = 'freemium';
@@ -17,7 +20,8 @@ const getUserSubscriptionDetails = async (userId) => {
   if (activeSubscription) {
     if (activeSubscription.planId) {
       activePlan = activeSubscription.planId;
-      tier = activeSubscription.planId.tier || activeSubscription.tier || 'standard';
+      tier =
+        activeSubscription.planId.tier || activeSubscription.tier || 'standard';
     } else if (activeSubscription.tier) {
       tier = activeSubscription.tier;
     }
@@ -25,11 +29,17 @@ const getUserSubscriptionDetails = async (userId) => {
 
   // If no active subscription plan object found, fetch the db plan for this tier or default freemium
   if (!activePlan) {
-    activePlan = await SubscriptionPlan.findOne({ tier, isActive: true }).sort({ order: 1 });
+    activePlan = await SubscriptionPlan.findOne({
+      tier,
+      isActive: true,
+    }).sort({ order: 1 });
   }
 
   if (!activePlan) {
-    activePlan = await SubscriptionPlan.findOne({ tier: 'freemium', isActive: true });
+    activePlan = await SubscriptionPlan.findOne({
+      tier: 'freemium',
+      isActive: true,
+    });
   }
 
   // Build key-value feature permissions map for easy consumption on mobile client
@@ -50,9 +60,21 @@ const getUserSubscriptionDetails = async (userId) => {
     });
   }
 
+  const isPaymentFailed =
+    latestSubscription?.status === 'past_due' ||
+    latestSubscription?.status === 'unpaid' ||
+    latestSubscription?.status === 'incomplete';
+
   return {
     tier,
+    status: activeSubscription
+      ? activeSubscription.status
+      : latestSubscription
+      ? latestSubscription.status
+      : 'inactive',
+    isPaymentFailed,
     subscription: activeSubscription || null,
+    latestSubscription: latestSubscription || null,
     plan: activePlan || null,
     permissions,
   };
