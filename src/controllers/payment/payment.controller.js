@@ -342,6 +342,10 @@ const subscribePlan = catchAsync(async (req, res) => {
   }
   const priceInCents = Math.round(Number(amount) * 100);
 
+  logger.info(
+    `[PAYMENT VIA DIRECT API] User ${user._id} (${user.email}) initiated payment for plan: "${plan.name}" (${billingCycle})`,
+  );
+
   const now = new Date();
 
   // 2. Double payment & upgrade validation
@@ -642,6 +646,12 @@ const subscribePlan = catchAsync(async (req, res) => {
 
   // Sync user subscription tier
   await syncUserSubscriptionTier(user._id);
+
+  logger.info(
+    `[PAYMENT VIA DIRECT API SUCCESS] Subscription created directly via API for user: ${
+      user._id
+    }, orderId: ${orderId}, tier: ${plan.tier || 'standard'}`,
+  );
 
   // Retrieve card details that were charged
   let chargedCard = null;

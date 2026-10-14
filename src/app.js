@@ -21,9 +21,15 @@ const app = express();
 app.use(morgan.successHandler);
 app.use(morgan.errorHandler);
 
-// Stripe Webhook endpoint (must be before express.json body parser)
-app.use('/webhook/stripe', stripeWebhookRoute);
+// Stripe Webhook endpoints (must be registered BEFORE express.json body parser)
+app.use('/v1/stripe/webhook', stripeWebhookRoute);
+app.use('/stripe/webhook', stripeWebhookRoute);
+app.use('/api/v1/stripe/webhook', stripeWebhookRoute);
+app.use('/api/stripe/webhook', stripeWebhookRoute);
 app.use('/v1/webhook/stripe', stripeWebhookRoute);
+app.use('/webhook/stripe', stripeWebhookRoute);
+app.use('/api/v1/webhook/stripe', stripeWebhookRoute);
+app.use('/api/webhook/stripe', stripeWebhookRoute);
 
 // only content type application/json allowed
 app.use(express.json());
@@ -54,7 +60,7 @@ const allowedOrigins = [
   'https://api-pipewyze.codedrivo.com',
   'https://admin-pipewyze.codedrivo.com',
   'https://admin.pipewyze.com',
-  'https://api.pipewyze.com'
+  'https://api.pipewyze.com',
 ];
 
 app.use(
