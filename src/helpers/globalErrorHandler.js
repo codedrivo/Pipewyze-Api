@@ -1,5 +1,6 @@
 const config = require('../config/config');
 const ApiError = require('../helpers/apiErrorConverter');
+const logger = require('../config/logger');
 
 const handleDevErrors = (res, error) => {
   const response = {
@@ -64,7 +65,9 @@ const JsonWebTokenErrorHandler = (error) => {
 };
 
 const globalErrorHandler = (error, req, res, next) => {
-  console.log(error);
+  if (error.name !== 'TokenExpiredError') {
+    logger.error(error);
+  }
   if (error instanceof ApiError) {
     error.statusCode = error.statusCode || 500;
     error.status = error.status || 'error';
