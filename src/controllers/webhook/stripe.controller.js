@@ -35,12 +35,6 @@ const handleStripeWebhook = async (req, res) => {
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  logger.info(
-    `[PAYMENT VIA WEBHOOK] Stripe webhook event received: ${event.type} (ID: ${
-      event.id
-    }) on path: ${req.originalUrl || req.url}`,
-  );
-
   try {
     switch (event.type) {
       case 'checkout.session.completed': {
@@ -69,7 +63,7 @@ const handleStripeWebhook = async (req, res) => {
 
           await syncUserSubscriptionTier(userId);
           logger.info(
-            `[PAYMENT VIA WEBHOOK SUCCESS] checkout.session.completed processed for user ${userId} -> tier ${tier}, orderId: ${orderId}`,
+            `[Stripe Webhook] checkout.session.completed processed for user ${userId} -> tier ${tier}`,
           );
         }
         break;
@@ -140,13 +134,10 @@ const handleStripeWebhook = async (req, res) => {
                 currentPeriodStart: periodStart,
                 currentPeriodEnd: periodEnd,
               });
-              logger.info(
-                `[PAYMENT VIA WEBHOOK SUCCESS] Generated new recurring order: ${recurringOrderId} for subscription ${subscriptionId}`,
-              );
             }
 
             logger.info(
-              `[PAYMENT VIA WEBHOOK SUCCESS] invoice.payment_succeeded processed for subscription: ${subscriptionId}, customer: ${customerId}, user: ${sub.userId}`,
+              `[Stripe Webhook] invoice.payment_succeeded processed for subscription: ${subscriptionId}`,
             );
           }
         }
@@ -170,7 +161,7 @@ const handleStripeWebhook = async (req, res) => {
             await sub.save();
             await syncUserSubscriptionTier(sub.userId);
             logger.warn(
-              `[PAYMENT VIA WEBHOOK FAILED] invoice.payment_failed for subscription ${subscriptionId}: ${failureReason}`,
+              `[Stripe Webhook] invoice.payment_failed for subscription ${subscriptionId}: ${failureReason}`,
             );
           }
         }
@@ -197,7 +188,7 @@ const handleStripeWebhook = async (req, res) => {
         }
 
         logger.warn(
-          `[PAYMENT VIA WEBHOOK FAILED] payment_intent.payment_failed for intent ${paymentIntent.id}: ${failureReason}`,
+          `[Stripe Webhook] payment_intent.payment_failed for intent ${paymentIntent.id}: ${failureReason}`,
         );
         break;
       }
@@ -205,7 +196,7 @@ const handleStripeWebhook = async (req, res) => {
       case 'payment_intent.succeeded': {
         const paymentIntent = event.data.object;
         logger.info(
-          `[PAYMENT VIA WEBHOOK SUCCESS] payment_intent.succeeded for intent ${paymentIntent.id}, customer: ${paymentIntent.customer}`,
+          `[Stripe Webhook] payment_intent.succeeded for intent: ${paymentIntent.id}`,
         );
         break;
       }
@@ -234,9 +225,6 @@ const handleStripeWebhook = async (req, res) => {
           }
           await sub.save();
           await syncUserSubscriptionTier(sub.userId);
-          logger.info(
-            `[Stripe Webhook] customer.subscription.updated status -> ${subscription.status}`,
-          );
         }
         break;
       }
@@ -266,7 +254,7 @@ const handleStripeWebhook = async (req, res) => {
       }
 
       default:
-        logger.info(`[Stripe Webhook] Unhandled event type: ${event.type}`);
+        break;
     }
 
     res.status(200).json({ received: true });
