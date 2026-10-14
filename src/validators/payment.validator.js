@@ -19,12 +19,16 @@ const paymentMethodParams = Joi.object({
   }),
 });
 
+const objectIdPattern = /^[0-9a-fA-F]{24}$/;
+
 const subscribe = Joi.object({
-  planId: Joi.string().required().messages({
+  planId: Joi.string().pattern(objectIdPattern).required().messages({
+    'string.pattern.base':
+      'Invalid planId format. Must be a valid 24-character hex ID.',
     'any.required': 'planId is required',
   }),
   billingCycle: Joi.string().valid('monthly', 'yearly').default('monthly'),
-  paymentMethodId: Joi.string().optional(),
+  paymentMethodId: Joi.string().trim().optional(),
 });
 
 module.exports = {

@@ -3,6 +3,7 @@ const ApiError = require('../../helpers/apiErrorConverter');
 const config = require('../../config/config');
 const User = require('../../models/user.model');
 const Subscription = require('../../models/subscription.model');
+const logger = require('../../config/logger');
 
 let stripe;
 if (config.stripe.secretKey) {
@@ -104,7 +105,9 @@ const attachCard = catchAsync(async (req, res) => {
     try {
       await stripe.paymentMethods.detach(paymentMethodId);
     } catch (detachErr) {
-      console.warn('[Stripe attachCard] Could not detach from old customer:', detachErr.message);
+      logger.warn(
+        `[Stripe attachCard] Could not detach from old customer: ${detachErr.message}`,
+      );
     }
   }
 
@@ -115,7 +118,7 @@ const attachCard = catchAsync(async (req, res) => {
         customer: customerId,
       });
     } catch (attachErr) {
-      console.warn('[Stripe attachCard] Attach warning:', attachErr.message);
+      logger.warn(`[Stripe attachCard] Attach warning: ${attachErr.message}`);
       // Re-retrieve to check if it got attached anyway
       paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
     }
@@ -136,7 +139,9 @@ const attachCard = catchAsync(async (req, res) => {
         });
         isDefault = true;
       } catch (updateErr) {
-        console.warn('[Stripe attachCard] Could not set default_payment_method:', updateErr.message);
+        logger.warn(
+          `[Stripe attachCard] Could not set default_payment_method: ${updateErr.message}`,
+        );
         isDefault = false;
       }
     } else {
@@ -294,7 +299,9 @@ const getUserServicePlan = catchAsync(async (req, res) => {
   });
 });
 
-const { syncUserSubscriptionTier } = require('../../services/subscriptionTier.service');
+const {
+  syncUserSubscriptionTier,
+} = require('../../services/subscriptionTier.service');
 const { generateUniqueOrderId } = require('../../helpers/orderId.helper');
 
 /**
@@ -308,35 +315,158 @@ const subscribePlan = catchAsync(async (req, res) => {
   const { planId, billingCycle = 'monthly', paymentMethodId } = req.body;
   const user = req.user;
 
-  // 1. Fetch Plan
+  // 1. Check if the plan id is valid and active
   const plan = await SubscriptionPlan.findById(planId);
   if (!plan) {
     throw new ApiError('Subscription plan not found', 404);
   }
-
-  const customerId = await getOrCreateStripeCustomer(user);
-
-  // 2. Determine payment method to charge
-  let defaultPaymentMethodId = paymentMethodId;
-  if (!defaultPaymentMethodId) {
-    const customer = await stripe.customers.retrieve(customerId);
-    defaultPaymentMethodId = customer.invoice_settings?.default_payment_method;
+  if (!plan.isActive) {
+    throw new ApiError(
+      'This subscription plan is currently inactive and cannot be purchased',
+      400,
+    );
   }
 
-  if (!defaultPaymentMethodId) {
-    // Check if customer has any saved card
-    const pms = await stripe.paymentMethods.list({ customer: customerId, type: 'card' });
-    if (pms.data && pms.data.length > 0) {
-      defaultPaymentMethodId = pms.data[0].id;
+  const amount =
+    billingCycle === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice;
+  if (
+    amount === undefined ||
+    amount === null ||
+    isNaN(amount) ||
+    Number(amount) < 0
+  ) {
+    throw new ApiError(
+      `Invalid price configured for plan with ${billingCycle} billing cycle`,
+      400,
+    );
+  }
+  const priceInCents = Math.round(Number(amount) * 100);
+
+  const now = new Date();
+
+  // 2. Double payment & upgrade validation
+  // Check if the user already has an active subscription
+  const existingActiveSub = await Subscription.findOne({
+    userId: user._id,
+    status: { $in: ['active', 'trialing'] },
+  }).populate('planId');
+
+  if (existingActiveSub) {
+    const existingPlanId =
+      existingActiveSub.planId?._id?.toString() ||
+      existingActiveSub.planId?.toString();
+    const isSamePlan = existingPlanId && existingPlanId === plan._id.toString();
+
+    // Check if period is currently active
+    const isPeriodActive = existingActiveSub.currentPeriodEnd
+      ? new Date(existingActiveSub.currentPeriodEnd) > now
+      : true;
+
+    // Double payment in single plan by the same user not allowed
+    if (isSamePlan && isPeriodActive) {
+      throw new ApiError(
+        'You already have an active subscription for this plan. Double payment for the same plan is not allowed.',
+        400,
+      );
+    }
+
+    // If existingActiveSub is for a different plan/tier, this payment is an UPGRADE.
+    // The previous recurring subscription will be canceled in Stripe before creating the new one.
+  }
+
+  // 3. Payment method belongs to user check & resolution
+  const customerId = await getOrCreateStripeCustomer(user);
+
+  let defaultPaymentMethodId = paymentMethodId;
+  let paymentMethodObj = null;
+
+  if (defaultPaymentMethodId) {
+    try {
+      paymentMethodObj = await stripe.paymentMethods.retrieve(
+        defaultPaymentMethodId,
+      );
+    } catch (err) {
+      throw new ApiError('Invalid payment method provided', 400);
+    }
+
+    if (!paymentMethodObj) {
+      throw new ApiError('Payment method not found', 404);
+    }
+
+    // Verify payment method belongs to this authenticated user's Stripe customer
+    if (paymentMethodObj.customer && paymentMethodObj.customer !== customerId) {
+      throw new ApiError(
+        'This payment method does not belong to your account',
+        403,
+      );
+    }
+
+    // If payment method is not yet attached to any customer, attach it to this customer
+    if (!paymentMethodObj.customer) {
+      try {
+        paymentMethodObj = await stripe.paymentMethods.attach(
+          defaultPaymentMethodId,
+          {
+            customer: customerId,
+          },
+        );
+      } catch (attachErr) {
+        throw new ApiError(
+          `Failed to attach payment method: ${attachErr.message}`,
+          400,
+        );
+      }
+    }
+  } else {
+    // Retrieve default card configured on Stripe customer
+    const customer = await stripe.customers.retrieve(customerId);
+    defaultPaymentMethodId = customer.invoice_settings?.default_payment_method;
+
+    if (!defaultPaymentMethodId) {
+      // Check customer's saved cards
+      const pms = await stripe.paymentMethods.list({
+        customer: customerId,
+        type: 'card',
+      });
+      if (pms.data && pms.data.length > 0) {
+        defaultPaymentMethodId = pms.data[0].id;
+        paymentMethodObj = pms.data[0];
+      }
+    } else {
+      try {
+        paymentMethodObj = await stripe.paymentMethods.retrieve(
+          defaultPaymentMethodId,
+        );
+      } catch (pmErr) {
+        logger.warn(
+          `[subscribePlan] Failed to retrieve default payment method: ${pmErr.message}`,
+        );
+      }
     }
   }
 
-  if (!defaultPaymentMethodId) {
-    throw new ApiError('No payment method attached. Please add a card first.', 400);
+  if (!defaultPaymentMethodId || !paymentMethodObj) {
+    throw new ApiError(
+      'No payment method attached. Please add a card first.',
+      400,
+    );
   }
 
-  const amount = billingCycle === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice;
-  const priceInCents = Math.round(Number(amount) * 100);
+  // Verify card has not expired
+  if (paymentMethodObj.card) {
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+    if (
+      paymentMethodObj.card.exp_year < currentYear ||
+      (paymentMethodObj.card.exp_year === currentYear &&
+        paymentMethodObj.card.exp_month < currentMonth)
+    ) {
+      throw new ApiError(
+        'The selected card has expired. Please use a valid card.',
+        400,
+      );
+    }
+  }
 
   const isOneTime =
     plan.name.toLowerCase().includes('one-time') ||
@@ -354,7 +484,6 @@ const subscribePlan = catchAsync(async (req, res) => {
     interval = 'month';
   }
 
-  const now = new Date();
   const periodEnd = new Date(now);
   if (isDaily) {
     periodEnd.setDate(periodEnd.getDate() + 1);
@@ -367,24 +496,32 @@ const subscribePlan = catchAsync(async (req, res) => {
   let paymentIntentId = `pi_local_${Date.now()}`;
   let stripeSubscriptionId = '';
 
-  // 3. Process payment / subscription in Stripe if price > 0
+  // Prevent rapid double-clicks (e.g. mobile button tapped twice within seconds)
+  const idempotencyKey = `sub_${user._id}_${
+    plan._id
+  }_${billingCycle}_${Math.floor(Date.now() / 15000)}`;
+
+  // 4. Process payment / subscription in Stripe if price > 0
   if (priceInCents > 0) {
     if (isOneTime) {
       // One-time payment intent
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: priceInCents,
-        currency: 'usd',
-        customer: customerId,
-        payment_method: defaultPaymentMethodId,
-        off_session: true,
-        confirm: true,
-        description: `Payment for ${plan.name} (${billingCycle})`,
-        metadata: {
-          userId: user._id.toString(),
-          planId: plan._id.toString(),
-          tier: plan.tier || 'standard',
+      const paymentIntent = await stripe.paymentIntents.create(
+        {
+          amount: priceInCents,
+          currency: 'usd',
+          customer: customerId,
+          payment_method: defaultPaymentMethodId,
+          off_session: true,
+          confirm: true,
+          description: `Payment for ${plan.name} (${billingCycle})`,
+          metadata: {
+            userId: user._id.toString(),
+            planId: plan._id.toString(),
+            tier: plan.tier || 'standard',
+          },
         },
-      });
+        { idempotencyKey },
+      );
       paymentIntentId = paymentIntent.id;
       stripeSubscriptionId = paymentIntent.id;
     } else {
@@ -401,7 +538,10 @@ const subscribePlan = catchAsync(async (req, res) => {
         // Ensure a Stripe Product exists for this plan
         let stripeProduct;
         try {
-          const productList = await stripe.products.list({ limit: 50, active: true });
+          const productList = await stripe.products.list({
+            limit: 50,
+            active: true,
+          });
           stripeProduct = productList.data.find((p) => p.name === plan.name);
           if (!stripeProduct) {
             stripeProduct = await stripe.products.create({
@@ -413,7 +553,9 @@ const subscribePlan = catchAsync(async (req, res) => {
             });
           }
         } catch (prodErr) {
-          console.warn('[subscribePlan] Product search/creation warning:', prodErr.message);
+          logger.warn(
+            `[subscribePlan] Product search/creation warning: ${prodErr.message}`,
+          );
           stripeProduct = await stripe.products.create({ name: plan.name });
         }
 
@@ -427,7 +569,7 @@ const subscribePlan = catchAsync(async (req, res) => {
         };
       }
 
-      // Cancel any existing active Stripe recurring subscription for this user
+      // Upgrade tier flow: cancel any existing active Stripe recurring subscription for this user
       const existingSub = await Subscription.findOne({
         userId: user._id,
         stripeSubscriptionId: { $regex: /^sub_/ },
@@ -435,25 +577,33 @@ const subscribePlan = catchAsync(async (req, res) => {
       if (existingSub && existingSub.stripeSubscriptionId) {
         try {
           await stripe.subscriptions.cancel(existingSub.stripeSubscriptionId);
+          logger.info(
+            `[subscribePlan] Canceled previous recurring subscription ${existingSub.stripeSubscriptionId} for upgrade to ${plan.name}`,
+          );
         } catch (cancelErr) {
-          console.warn('[subscribePlan] Note: could not cancel old subscription:', cancelErr.message);
+          logger.warn(
+            `[subscribePlan] Note: could not cancel old subscription during upgrade: ${cancelErr.message}`,
+          );
         }
       }
 
       // Create Stripe Subscription
-      const stripeSub = await stripe.subscriptions.create({
-        customer: customerId,
-        items: [subscriptionItem],
-        default_payment_method: defaultPaymentMethodId,
-        expand: ['latest_invoice.payment_intent'],
-        metadata: {
-          userId: user._id.toString(),
-          planId: plan._id.toString(),
-          tier: plan.tier || 'standard',
-          billingCycle,
-          interval,
+      const stripeSub = await stripe.subscriptions.create(
+        {
+          customer: customerId,
+          items: [subscriptionItem],
+          default_payment_method: defaultPaymentMethodId,
+          expand: ['latest_invoice.payment_intent'],
+          metadata: {
+            userId: user._id.toString(),
+            planId: plan._id.toString(),
+            tier: plan.tier || 'standard',
+            billingCycle,
+            interval,
+          },
         },
-      });
+        { idempotencyKey },
+      );
 
       stripeSubscriptionId = stripeSub.id;
       paymentIntentId =
@@ -482,9 +632,12 @@ const subscribePlan = catchAsync(async (req, res) => {
   let subscription = await Subscription.findOneAndUpdate(
     { userId: user._id },
     subscriptionData,
-    { upsert: true, new: true }
+    { upsert: true, new: true },
   )
-    .populate('userId', 'firstName lastName email subscriptionTier profileimageurl')
+    .populate(
+      'userId',
+      'firstName lastName email subscriptionTier profileimageurl',
+    )
     .populate('planId', 'name monthlyPrice yearlyPrice tier');
 
   // Sync user subscription tier
@@ -503,7 +656,9 @@ const subscribePlan = catchAsync(async (req, res) => {
       };
     }
   } catch (pmErr) {
-    console.warn('[subscribePlan] Could not retrieve card details:', pmErr.message);
+    logger.warn(
+      `[subscribePlan] Could not retrieve card details: ${pmErr.message}`,
+    );
   }
 
   res.status(200).json({
@@ -514,7 +669,9 @@ const subscribePlan = catchAsync(async (req, res) => {
       user: {
         id: user._id,
         email: user.email,
-        name: user.fullName || `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+        name:
+          user.fullName ||
+          `${user.firstName || ''} ${user.lastName || ''}`.trim(),
         subscriptionTier: plan.tier || 'standard',
       },
       plan: {
@@ -547,11 +704,17 @@ const cancelSubscription = catchAsync(async (req, res) => {
   }
 
   // Cancel in Stripe if recurring subscription exists
-  if (stripe && sub.stripeSubscriptionId && sub.stripeSubscriptionId.startsWith('sub_')) {
+  if (
+    stripe &&
+    sub.stripeSubscriptionId &&
+    sub.stripeSubscriptionId.startsWith('sub_')
+  ) {
     try {
       await stripe.subscriptions.cancel(sub.stripeSubscriptionId);
     } catch (err) {
-      console.warn('[cancelSubscription] Stripe cancellation error:', err.message);
+      logger.warn(
+        `[cancelSubscription] Stripe cancellation error: ${err.message}`,
+      );
     }
   }
 
