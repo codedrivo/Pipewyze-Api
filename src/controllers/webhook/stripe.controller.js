@@ -72,7 +72,11 @@ const handleStripeWebhook = async (req, res) => {
       case 'invoice.payment_succeeded': {
         const invoice = event.data.object;
         const customerId = invoice.customer;
-        const subscriptionId = invoice.subscription;
+        const subscriptionId =
+          invoice.subscription ||
+          invoice.parent?.subscription_details?.subscription ||
+          invoice.lines?.data?.[0]?.parent?.subscription_item_details
+            ?.subscription;
 
         if (subscriptionId) {
           const sub = await Subscription.findOne({
@@ -83,33 +87,23 @@ const handleStripeWebhook = async (req, res) => {
           }).sort({ createdAt: -1 });
 
           if (sub) {
-            // Update active subscription status and billing periods
-            sub.status = 'active';
-            if (invoice.lines?.data?.[0]?.period) {
-              sub.currentPeriodStart = new Date(
-                invoice.lines.data[0].period.start * 1000,
-              );
-              sub.currentPeriodEnd = new Date(
-                invoice.lines.data[0].period.end * 1000,
-              );
-            }
-            if (!sub.stripeSubscriptionId) {
-              sub.stripeSubscriptionId = subscriptionId;
-            }
-            await sub.save();
-            await syncUserSubscriptionTier(sub.userId);
-
-            // Automatically generate a new Order record for this recurring invoice cycle (must be ORD- with 5 digits)
             const isInitialCreation =
               invoice.billing_reason === 'subscription_create';
+
             const periodStart = invoice.lines?.data?.[0]?.period?.start
               ? new Date(invoice.lines.data[0].period.start * 1000)
+              : invoice.period_start
+              ? new Date(invoice.period_start * 1000)
               : sub.currentPeriodStart || new Date();
+
             const periodEnd = invoice.lines?.data?.[0]?.period?.end
               ? new Date(invoice.lines.data[0].period.end * 1000)
+              : invoice.period_end
+              ? new Date(invoice.period_end * 1000)
               : sub.currentPeriodEnd ||
                 new Date(Date.now() + 24 * 60 * 60 * 1000);
 
+            // Automatically generate a new Order record for this recurring invoice cycle (must be ORD- with 5 digits)
             // Check if an order for this subscription cycle already exists
             const existingOrderForPeriod = await Subscription.findOne({
               stripeSubscriptionId: subscriptionId,
@@ -134,7 +128,20 @@ const handleStripeWebhook = async (req, res) => {
                 currentPeriodStart: periodStart,
                 currentPeriodEnd: periodEnd,
               });
+              logger.info(
+                `[Stripe Webhook] Generated recurring order ${recurringOrderId} for subscription ${subscriptionId}`,
+              );
             }
+
+            // Update active subscription status and billing periods
+            sub.status = 'active';
+            sub.currentPeriodStart = periodStart;
+            sub.currentPeriodEnd = periodEnd;
+            if (!sub.stripeSubscriptionId) {
+              sub.stripeSubscriptionId = subscriptionId;
+            }
+            await sub.save();
+            await syncUserSubscriptionTier(sub.userId);
 
             logger.info(
               `[Stripe Webhook] invoice.payment_succeeded processed for subscription: ${subscriptionId}`,
@@ -146,7 +153,12 @@ const handleStripeWebhook = async (req, res) => {
 
       case 'invoice.payment_failed': {
         const invoice = event.data.object;
-        const subscriptionId = invoice.subscription;
+        const customerId = invoice.customer;
+        const subscriptionId =
+          invoice.subscription ||
+          invoice.parent?.subscription_details?.subscription ||
+          invoice.lines?.data?.[0]?.parent?.subscription_item_details
+            ?.subscription;
         const failureReason =
           invoice.last_finalization_error?.message ||
           invoice.payment_intent?.last_payment_error?.message ||
@@ -154,8 +166,11 @@ const handleStripeWebhook = async (req, res) => {
 
         if (subscriptionId) {
           const sub = await Subscription.findOne({
-            stripeSubscriptionId: subscriptionId,
-          });
+            $or: [
+              { stripeSubscriptionId: subscriptionId },
+              { stripeCustomerId: customerId },
+            ],
+          }).sort({ createdAt: -1 });
           if (sub) {
             sub.status = 'past_due';
             await sub.save();
@@ -208,7 +223,7 @@ const handleStripeWebhook = async (req, res) => {
             { stripeSubscriptionId: subscription.id },
             { stripeCustomerId: subscription.customer },
           ],
-        });
+        }).sort({ createdAt: -1 });
 
         if (sub) {
           sub.status = subscription.status;

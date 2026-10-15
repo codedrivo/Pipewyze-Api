@@ -349,7 +349,9 @@ const subscribePlan = catchAsync(async (req, res) => {
   const existingActiveSub = await Subscription.findOne({
     userId: user._id,
     status: { $in: ['active', 'trialing'] },
-  }).populate('planId');
+  })
+    .sort({ createdAt: -1 })
+    .populate('planId');
 
   if (existingActiveSub) {
     const existingPlanId =
@@ -573,7 +575,7 @@ const subscribePlan = catchAsync(async (req, res) => {
       const existingSub = await Subscription.findOne({
         userId: user._id,
         stripeSubscriptionId: { $regex: /^sub_/ },
-      });
+      }).sort({ createdAt: -1 });
       if (existingSub && existingSub.stripeSubscriptionId) {
         try {
           await stripe.subscriptions.cancel(existingSub.stripeSubscriptionId);
@@ -697,7 +699,7 @@ const cancelSubscription = catchAsync(async (req, res) => {
   const sub = await Subscription.findOne({
     userId: user._id,
     status: { $in: ['active', 'trialing'] },
-  });
+  }).sort({ createdAt: -1 });
 
   if (!sub) {
     throw new ApiError('No active subscription found to cancel', 404);

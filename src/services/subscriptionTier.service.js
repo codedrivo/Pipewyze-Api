@@ -10,7 +10,9 @@ const getUserSubscriptionDetails = async (userId) => {
     Subscription.findOne({
       userId,
       status: { $in: ['active', 'trialing'] },
-    }).populate('planId'),
+    })
+      .sort({ createdAt: -1 })
+      .populate('planId'),
     Subscription.findOne({ userId }).sort({ createdAt: -1 }).populate('planId'),
   ]);
 
