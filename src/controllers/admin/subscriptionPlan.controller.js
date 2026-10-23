@@ -2,6 +2,17 @@ const SubscriptionPlan = require('../../models/subscriptionPlan.model');
 const catchAsync = require('../../helpers/asyncErrorHandler');
 const ApiError = require('../../helpers/apiErrorConverter');
 
+const Subscription = require('../../models/subscription.model');
+
+const DEFAULT_ACCESSIBLE_FEATURES = [
+  { key: 'equipment', label: 'Equipment & Parts Directory', enabled: true },
+  { key: 'essential_tools', label: 'Essential Tools & Recommendations', enabled: true },
+  { key: 'maintenance_guides', label: 'Maintenance Guides', enabled: true },
+  { key: 'plumbing_codes', label: 'Plumbing Code Reference', enabled: true },
+  { key: 'training_videos', label: 'Training Videos Library', enabled: true },
+  { key: 'ai_assistant', label: 'AI Assistant Access', enabled: true },
+];
+
 const DEFAULT_PLANS = [
   {
     name: '$1 One-Time Test Plan',
@@ -15,13 +26,7 @@ const DEFAULT_PLANS = [
       'Instant access verification',
       'Transaction testing',
     ],
-    accessibleFeatures: [
-      { key: 'equipment', label: 'Equipment & Parts Directory', enabled: false },
-      { key: 'essential_tools', label: 'Essential Tools & Recommendations', enabled: false },
-      { key: 'maintenance_guides', label: 'Maintenance Guides', enabled: false },
-      { key: 'plumbing_codes', label: 'Plumbing Code Reference', enabled: false },
-      { key: 'training_videos', label: 'Training Videos Library', enabled: false },
-    ],
+    accessibleFeatures: DEFAULT_ACCESSIBLE_FEATURES,
     isActive: true,
     order: 1,
   },
@@ -30,20 +35,14 @@ const DEFAULT_PLANS = [
     tier: 'professional',
     description: 'Static $1.00/day daily recurring subscription test plan for transaction verification.',
     monthlyPrice: 1.00,
-    yearlyPrice: 365.00,
+    yearlyPrice: 1.00,
     trialDays: 0,
     features: [
       '$1/day daily recurring subscription test',
       'Daily billing verification',
       'Transaction testing',
     ],
-    accessibleFeatures: [
-      { key: 'equipment', label: 'Equipment & Parts Directory', enabled: false },
-      { key: 'essential_tools', label: 'Essential Tools & Recommendations', enabled: false },
-      { key: 'maintenance_guides', label: 'Maintenance Guides', enabled: false },
-      { key: 'plumbing_codes', label: 'Plumbing Code Reference', enabled: false },
-      { key: 'training_videos', label: 'Training Videos Library', enabled: false },
-    ],
+    accessibleFeatures: DEFAULT_ACCESSIBLE_FEATURES,
     isActive: true,
     order: 2,
   },
@@ -56,32 +55,65 @@ const seedPlansIfEmpty = async () => {
     // index already dropped or collection does not exist yet
   }
 
+  // Remove any legacy duplicate/redundant recurring plans like 'Daily Recurring Pro Plan'
+  const duplicatePlans = await SubscriptionPlan.find({
+    name: { $in: ['Daily Recurring Pro Plan', '$1/mo Recurring Test Plan'] },
+  });
+
+  const dailyTestPlan = await SubscriptionPlan.findOne({
+    $or: [{ name: '$1/day Recurring Test Plan' }, { name: '$1/mo Recurring Test Plan' }],
+  });
+
+  if (duplicatePlans.length > 0) {
+    for (const dup of duplicatePlans) {
+      if (dailyTestPlan && String(dup._id) !== String(dailyTestPlan._id)) {
+        await Subscription.updateMany(
+          { planId: dup._id },
+          { $set: { planId: dailyTestPlan._id, tier: 'professional' } },
+        );
+        await SubscriptionPlan.findByIdAndDelete(dup._id);
+      }
+    }
+  }
+
   const count = await SubscriptionPlan.countDocuments();
   if (count === 0) {
     await SubscriptionPlan.insertMany(DEFAULT_PLANS);
     console.log('[SubscriptionPlan] Default $1 Test plans seeded.');
   } else {
     // Ensure $1 static test plans exist for testing transactions
-    const oneTimeTest = await SubscriptionPlan.findOne({ name: '$1 One-Time Test Plan' });
+    let oneTimeTest = await SubscriptionPlan.findOne({ name: '$1 One-Time Test Plan' });
     if (!oneTimeTest) {
       await SubscriptionPlan.create(DEFAULT_PLANS[0]);
+    } else {
+      oneTimeTest.order = 1;
+      oneTimeTest.monthlyPrice = 1.00;
+      oneTimeTest.yearlyPrice = 1.00;
+      if (!oneTimeTest.accessibleFeatures || oneTimeTest.accessibleFeatures.length === 0) {
+        oneTimeTest.accessibleFeatures = DEFAULT_ACCESSIBLE_FEATURES;
+      }
+      await oneTimeTest.save();
     }
-    const dailyTest = await SubscriptionPlan.findOne({
+
+    let dailyTest = await SubscriptionPlan.findOne({
       $or: [{ name: '$1/day Recurring Test Plan' }, { name: '$1/mo Recurring Test Plan' }],
     });
     if (!dailyTest) {
       await SubscriptionPlan.create(DEFAULT_PLANS[1]);
     } else {
       dailyTest.name = '$1/day Recurring Test Plan';
+      dailyTest.tier = 'professional';
       dailyTest.description = 'Static $1.00/day daily recurring subscription test plan for transaction verification.';
+      dailyTest.monthlyPrice = 1.00;
+      dailyTest.yearlyPrice = 1.00;
+      dailyTest.order = 2;
+      dailyTest.isActive = true;
       dailyTest.features = [
         '$1/day daily recurring subscription test',
         'Daily billing verification',
         'Transaction testing',
       ];
-      if (!dailyTest.accessibleFeatures || dailyTest.accessibleFeatures.length === 0) {
-        dailyTest.accessibleFeatures = DEFAULT_PLANS[1].accessibleFeatures;
-      }
+      dailyTest.accessibleFeatures = DEFAULT_ACCESSIBLE_FEATURES;
       await dailyTest.save();
     }
   }
