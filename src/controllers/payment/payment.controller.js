@@ -327,8 +327,18 @@ const subscribePlan = catchAsync(async (req, res) => {
     );
   }
 
-  const amount =
-    billingCycle === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice;
+  const isOneTime =
+    plan.name.toLowerCase().includes('one-time') ||
+    plan.name.toLowerCase().includes('onetime');
+  const isDaily =
+    plan.name.toLowerCase().includes('/day') ||
+    plan.name.toLowerCase().includes('daily');
+
+  const amount = isDaily
+    ? plan.monthlyPrice
+    : billingCycle === 'yearly'
+    ? plan.yearlyPrice
+    : plan.monthlyPrice;
   if (
     amount === undefined ||
     amount === null ||
@@ -469,13 +479,6 @@ const subscribePlan = catchAsync(async (req, res) => {
       );
     }
   }
-
-  const isOneTime =
-    plan.name.toLowerCase().includes('one-time') ||
-    plan.name.toLowerCase().includes('onetime');
-  const isDaily =
-    plan.name.toLowerCase().includes('/day') ||
-    plan.name.toLowerCase().includes('daily');
 
   let interval = 'month';
   if (isDaily) {

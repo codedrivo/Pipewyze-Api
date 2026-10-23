@@ -24,12 +24,16 @@ const register = catchAsync(async (req, res, next) => {
   const { getUserSubscriptionDetails } = require('../../services/subscriptionTier.service');
   const subscriptionDetails = await getUserSubscriptionDetails(user._id);
 
+  const userObj = {
+    ...user.toObject(),
+    permissions: subscriptionDetails.permissions,
+  };
+
   res.status(201).send({
     message: 'Registration successful, please login',
     data: {
       tokens,
-      user,
-      subscription: subscriptionDetails,
+      user: userObj,
     },
   });
 });
