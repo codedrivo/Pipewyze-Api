@@ -67,17 +67,32 @@ const getUserSubscriptionDetails = async (userId) => {
     latestSubscription?.status === 'unpaid' ||
     latestSubscription?.status === 'incomplete';
 
+  const sub = activeSubscription || latestSubscription || null;
+
+  const planDetail = activePlan
+    ? {
+        id: activePlan._id ? activePlan._id.toString() : activePlan.id,
+        name: activePlan.name,
+        tier: activePlan.tier,
+        description: activePlan.description || '',
+        price:
+          activePlan.monthlyPrice !== undefined
+            ? activePlan.monthlyPrice
+            : activePlan.yearlyPrice || 0,
+        features: activePlan.features || [],
+      }
+    : null;
+
   return {
     tier,
-    status: activeSubscription
-      ? activeSubscription.status
-      : latestSubscription
-      ? latestSubscription.status
-      : 'inactive',
-    isPaymentFailed,
-    subscription: activeSubscription || null,
-    latestSubscription: latestSubscription || null,
-    plan: activePlan || null,
+    status: sub ? sub.status : 'inactive',
+    orderId: sub?.orderId || null,
+    startDate: sub?.startDate || null,
+    currentPeriodStart: sub?.currentPeriodStart || null,
+    currentPeriodEnd: sub?.currentPeriodEnd || null,
+    canCancel:
+      sub?.canCancel !== undefined ? sub.canCancel : sub?.status === 'active',
+    plan: planDetail,
     permissions,
   };
 };
