@@ -53,6 +53,7 @@ const getProfile = catchAsync(async (req, res, next) => {
 
   const { getUserSubscriptionDetails } = require('../../services/subscriptionTier.service');
   const subscriptionDetails = await getUserSubscriptionDetails(req.user._id);
+  userData.permissions = subscriptionDetails.permissions;
 
   if (userData.role === 'licensed-plumber') {
     const plumberService = require('../../services/public/licensed-plumber/licensedPlumber.service');
@@ -61,6 +62,7 @@ const getProfile = catchAsync(async (req, res, next) => {
         req.user._id,
       );
       delete plumberData.password;
+      plumberData.permissions = subscriptionDetails.permissions;
       res.status(200).send({
         message: 'Profile retrieved successfully',
         data: {

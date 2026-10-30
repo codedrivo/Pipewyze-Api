@@ -6,7 +6,8 @@ const SubscriptionPlan = require('../models/subscriptionPlan.model');
  * Resolves the active subscription tier and plan details for a user.
  */
 const getUserSubscriptionDetails = async (userId) => {
-  const [activeSubscription, latestSubscription] = await Promise.all([
+  const [user, activeSubscription, latestSubscription] = await Promise.all([
+    User.findById(userId).lean(),
     Subscription.findOne({
       userId,
       status: { $in: ['active', 'trialing'] },
@@ -27,6 +28,8 @@ const getUserSubscriptionDetails = async (userId) => {
     } else if (activeSubscription.tier) {
       tier = activeSubscription.tier;
     }
+  } else if (user && user.subscriptionTier) {
+    tier = user.subscriptionTier;
   }
 
   // If no active subscription plan object found, fetch the db plan for this tier or default freemium
@@ -35,6 +38,22 @@ const getUserSubscriptionDetails = async (userId) => {
       tier,
       isActive: true,
     }).sort({ order: 1 });
+  }
+
+  // If the plan has no accessibleFeatures or is marked inactive, fall back to current active plan for this tier
+  if (
+    !activePlan ||
+    !Array.isArray(activePlan.accessibleFeatures) ||
+    activePlan.accessibleFeatures.length === 0 ||
+    activePlan.isActive === false
+  ) {
+    const fallbackPlan = await SubscriptionPlan.findOne({
+      tier,
+      isActive: true,
+    }).sort({ order: 1 });
+    if (fallbackPlan) {
+      activePlan = fallbackPlan;
+    }
   }
 
   if (!activePlan) {

@@ -85,13 +85,8 @@ const seedPlansIfEmpty = async () => {
     let oneTimeTest = await SubscriptionPlan.findOne({ name: '$1 One-Time Test Plan' });
     if (!oneTimeTest) {
       await SubscriptionPlan.create(DEFAULT_PLANS[0]);
-    } else {
-      oneTimeTest.order = 1;
-      oneTimeTest.monthlyPrice = 1.00;
-      oneTimeTest.yearlyPrice = 1.00;
-      if (!oneTimeTest.accessibleFeatures || oneTimeTest.accessibleFeatures.length === 0) {
-        oneTimeTest.accessibleFeatures = DEFAULT_ACCESSIBLE_FEATURES;
-      }
+    } else if (!oneTimeTest.accessibleFeatures || oneTimeTest.accessibleFeatures.length === 0) {
+      oneTimeTest.accessibleFeatures = DEFAULT_ACCESSIBLE_FEATURES;
       await oneTimeTest.save();
     }
 
@@ -100,19 +95,7 @@ const seedPlansIfEmpty = async () => {
     });
     if (!dailyTest) {
       await SubscriptionPlan.create(DEFAULT_PLANS[1]);
-    } else {
-      dailyTest.name = '$1/day Recurring Test Plan';
-      dailyTest.tier = 'professional';
-      dailyTest.description = 'Static $1.00/day daily recurring subscription test plan for transaction verification.';
-      dailyTest.monthlyPrice = 1.00;
-      dailyTest.yearlyPrice = 1.00;
-      dailyTest.order = 2;
-      dailyTest.isActive = true;
-      dailyTest.features = [
-        '$1/day daily recurring subscription test',
-        'Daily billing verification',
-        'Transaction testing',
-      ];
+    } else if (!dailyTest.accessibleFeatures || dailyTest.accessibleFeatures.length === 0) {
       dailyTest.accessibleFeatures = DEFAULT_ACCESSIBLE_FEATURES;
       await dailyTest.save();
     }
