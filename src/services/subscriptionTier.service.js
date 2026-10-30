@@ -28,8 +28,6 @@ const getUserSubscriptionDetails = async (userId) => {
     } else if (activeSubscription.tier) {
       tier = activeSubscription.tier;
     }
-  } else if (user && user.subscriptionTier) {
-    tier = user.subscriptionTier;
   }
 
   // If no active subscription plan object found, fetch the db plan for this tier or default freemium
