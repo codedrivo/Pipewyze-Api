@@ -13,6 +13,7 @@ const getDashboardData = catchAsync(async (req, res, next) => {
   });
   const standardUsers = await User.countDocuments({ subscriptionTier: 'standard' });
   const professionalUsers = await User.countDocuments({ subscriptionTier: 'professional' });
+  const canceledUsers = await Subscription.countDocuments({ status: 'canceled' });
 
   // Recent Subscriptions/Transactions
   const recentTransactions = await Subscription.find()
@@ -66,6 +67,7 @@ const getDashboardData = catchAsync(async (req, res, next) => {
         freemium: freemiumUsers,
         standard: standardUsers,
         professional: professionalUsers,
+        canceled: canceledUsers,
       },
       recentTransactions,
       revenueChart: {

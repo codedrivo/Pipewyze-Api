@@ -100,15 +100,20 @@ const getUserSubscriptionDetails = async (userId) => {
       }
     : null;
 
+  const isFreemium = tier === 'freemium';
+
   return {
     tier,
     status: sub ? sub.status : 'inactive',
     orderId: sub?.orderId || null,
-    startDate: sub?.startDate || null,
-    currentPeriodStart: sub?.currentPeriodStart || null,
-    currentPeriodEnd: sub?.currentPeriodEnd || null,
-    canCancel:
-      sub?.canCancel !== undefined ? sub.canCancel : sub?.status === 'active',
+    startDate: isFreemium ? null : sub?.startDate || null,
+    currentPeriodStart: isFreemium ? null : sub?.currentPeriodStart || null,
+    currentPeriodEnd: isFreemium ? null : sub?.currentPeriodEnd || null,
+    canCancel: isFreemium
+      ? false
+      : sub?.canCancel !== undefined
+      ? sub.canCancel
+      : sub?.status === 'active',
     plan: planDetail,
     permissions,
   };
