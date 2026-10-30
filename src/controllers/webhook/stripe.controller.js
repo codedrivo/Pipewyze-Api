@@ -254,9 +254,19 @@ const handleStripeWebhook = async (req, res) => {
         });
 
         if (sub) {
-          sub.status = 'canceled';
-          sub.canceledAt = new Date();
-          await sub.save();
+          const now = new Date();
+          await Subscription.updateMany(
+            {
+              userId: sub.userId,
+              status: { $in: ['active', 'trialing'] },
+            },
+            {
+              $set: {
+                status: 'canceled',
+                canceledAt: now,
+              },
+            },
+          );
 
           await User.findByIdAndUpdate(sub.userId, {
             subscriptionTier: 'freemium',

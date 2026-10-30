@@ -699,40 +699,104 @@ const subscribePlan = catchAsync(async (req, res) => {
  */
 const cancelSubscription = catchAsync(async (req, res) => {
   const user = req.user;
-  const sub = await Subscription.findOne({
+
+  // 1. Find all active or trialing subscriptions for this user
+  const activeSubs = await Subscription.find({
     userId: user._id,
     status: { $in: ['active', 'trialing'] },
-  }).sort({ createdAt: -1 });
+  });
 
-  if (!sub) {
+  const latestSubBefore = await Subscription.findOne({ userId: user._id }).sort({
+    createdAt: -1,
+  });
+
+  if ((!activeSubs || activeSubs.length === 0) && (!latestSubBefore || latestSubBefore.status === 'canceled')) {
     throw new ApiError('No active subscription found to cancel', 404);
   }
 
-  // Cancel in Stripe if recurring subscription exists
-  if (
-    stripe &&
-    sub.stripeSubscriptionId &&
-    sub.stripeSubscriptionId.startsWith('sub_')
-  ) {
-    try {
-      await stripe.subscriptions.cancel(sub.stripeSubscriptionId);
-    } catch (err) {
-      logger.warn(
-        `[cancelSubscription] Stripe cancellation error: ${err.message}`,
-      );
+  // 2. Stop ALL recurring subscriptions in Stripe
+  if (stripe) {
+    // 2a. Cancel every active subscription tracked on MongoDB documents
+    for (const sub of activeSubs) {
+      if (
+        sub.stripeSubscriptionId &&
+        sub.stripeSubscriptionId.startsWith('sub_')
+      ) {
+        try {
+          await stripe.subscriptions.cancel(sub.stripeSubscriptionId);
+          logger.info(
+            `[cancelSubscription] Cancelled tracked Stripe subscription: ${sub.stripeSubscriptionId}`,
+          );
+        } catch (err) {
+          logger.warn(
+            `[cancelSubscription] Stripe cancellation error for ${sub.stripeSubscriptionId}: ${err.message}`,
+          );
+        }
+      }
+    }
+
+    // 2b. Also inspect customer on Stripe directly to cancel any active recurring subscriptions
+    const customerId = user.stripeCustomerId || activeSubs[0]?.stripeCustomerId || latestSubBefore?.stripeCustomerId;
+    if (customerId) {
+      try {
+        const customerStripeSubs = await stripe.subscriptions.list({
+          customer: customerId,
+          status: 'active',
+        });
+        for (const stSub of customerStripeSubs.data) {
+          try {
+            await stripe.subscriptions.cancel(stSub.id);
+            logger.info(
+              `[cancelSubscription] Cancelled active Stripe customer subscription: ${stSub.id}`,
+            );
+          } catch (stErr) {
+            logger.warn(
+              `[cancelSubscription] Error cancelling Stripe sub ${stSub.id}: ${stErr.message}`,
+            );
+          }
+        }
+      } catch (listErr) {
+        logger.warn(
+          `[cancelSubscription] Error listing Stripe customer subscriptions: ${listErr.message}`,
+        );
+      }
     }
   }
 
-  sub.status = 'canceled';
-  sub.canceledAt = new Date();
-  await sub.save();
+  // 3. Mark all user's active/trialing subscriptions as canceled in MongoDB
+  const now = new Date();
+  await Subscription.updateMany(
+    {
+      userId: user._id,
+      status: { $in: ['active', 'trialing'] },
+    },
+    {
+      $set: {
+        status: 'canceled',
+        canceledAt: now,
+      },
+    },
+  );
 
-  await syncUserSubscriptionTier(user._id);
+  // 4. Reset User subscriptionTier to freemium
+  await User.findByIdAndUpdate(user._id, {
+    subscriptionTier: 'freemium',
+  });
+
+  // 5. Fetch updated subscription details
+  const { getUserSubscriptionDetails } = require('../../services/subscriptionTier.service');
+  const subscriptionDetails = await getUserSubscriptionDetails(user._id);
+  const latestSub = await Subscription.findOne({ userId: user._id }).sort({
+    createdAt: -1,
+  });
 
   res.status(200).json({
     status: 'success',
-    message: 'Subscription canceled successfully',
-    data: sub,
+    message: 'Subscription canceled successfully and recurring billing stopped',
+    data: {
+      subscription: latestSub,
+      subscriptionDetails,
+    },
   });
 });
 

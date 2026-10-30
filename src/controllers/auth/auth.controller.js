@@ -26,6 +26,7 @@ const register = catchAsync(async (req, res, next) => {
 
   const userObj = {
     ...user.toObject(),
+    subscriptionTier: subscriptionDetails.tier,
     permissions: subscriptionDetails.permissions,
   };
 
@@ -51,6 +52,7 @@ const login = catchAsync(async (req, res, next) => {
 
   const userObj = {
     ...user.toObject(),
+    subscriptionTier: subscriptionDetails.tier,
     permissions: subscriptionDetails.permissions,
   };
 
@@ -243,6 +245,7 @@ const googleLogin = catchAsync(async (req, res) => {
 
   const userObj = {
     ...user.toObject(),
+    subscriptionTier: subscriptionDetails.tier,
     permissions: subscriptionDetails.permissions,
   };
 
