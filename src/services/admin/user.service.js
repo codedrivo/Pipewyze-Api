@@ -41,6 +41,7 @@ const userListFind = async (
 
     const AiChat = require('../../models/aiChat.model');
     const Subscription = require('../../models/subscription.model');
+    const SubscriptionPlan = require('../../models/subscriptionPlan.model');
 
     const userIds = users.map((u) => u._id);
 
@@ -49,10 +50,10 @@ const userListFind = async (
       { $group: { _id: '$userId', count: { $sum: 1 } } },
     ]);
 
-    const activeSubs = await Subscription.find({
+    const allUserSubs = await Subscription.find({
       userId: { $in: userIds },
-      status: { $in: ['active', 'trialing'] },
     })
+      .sort({ createdAt: -1 })
       .populate('planId', 'name monthlyPrice yearlyPrice tier')
       .lean();
 
@@ -62,18 +63,40 @@ const userListFind = async (
     });
 
     const subMap = {};
-    activeSubs.forEach((sub) => {
-      subMap[sub.userId.toString()] = sub;
+    allUserSubs.forEach((sub) => {
+      const uIdStr = sub.userId.toString();
+      if (!subMap[uIdStr]) {
+        subMap[uIdStr] = sub;
+      } else if (
+        ['active', 'trialing'].includes(sub.status) &&
+        !['active', 'trialing'].includes(subMap[uIdStr].status)
+      ) {
+        subMap[uIdStr] = sub;
+      }
     });
 
     const usersWithAiInfo = users.map((u) => {
       const uIdStr = u._id.toString();
       const userSub = subMap[uIdStr];
+      const isActive =
+        userSub && ['active', 'trialing'].includes(userSub.status);
+      const isCanceled =
+        userSub && userSub.status === 'canceled' && !isActive;
+
+      const resolvedTier = isActive
+        ? userSub.tier || userSub.planId?.tier || u.subscriptionTier || 'standard'
+        : 'freemium';
+
       return {
         ...u,
+        subscriptionTier: resolvedTier,
         aiUsageCount: aiCountMap[uIdStr] || 0,
-        isSubscribed: !!userSub,
-        subscriptionStatus: userSub ? userSub.status : 'none',
+        isSubscribed: isActive,
+        subscriptionStatus: isActive
+          ? userSub.status
+          : isCanceled
+          ? 'canceled'
+          : 'none',
         activePlan: userSub ? userSub.planId : null,
       };
     });
