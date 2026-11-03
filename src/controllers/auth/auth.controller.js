@@ -258,6 +258,30 @@ const googleLogin = catchAsync(async (req, res) => {
   });
 });
 
+// Apple Login
+const appleLogin = catchAsync(async (req, res) => {
+  const { identityToken, fullName, email, role } = req.body;
+  const user = await service.appleLogin(identityToken, fullName, role, email);
+  const tokens = await token.generateAuthTokens(user);
+
+  const { getUserSubscriptionDetails } = require('../../services/subscriptionTier.service');
+  const subscriptionDetails = await getUserSubscriptionDetails(user._id);
+
+  const userObj = {
+    ...user.toObject(),
+    subscriptionTier: subscriptionDetails.tier,
+    permissions: subscriptionDetails.permissions,
+  };
+
+  res.status(200).send({
+    message: 'Apple login successful',
+    data: {
+      tokens,
+      user: userObj,
+    },
+  });
+});
+
 module.exports = {
   login,
   forgotPassword,
@@ -271,5 +295,6 @@ module.exports = {
   notifyAdmin,
   register,
   googleLogin,
+  appleLogin,
 };
 

@@ -73,6 +73,12 @@ router.post(
   controller.googleLogin,
 );
 
+router.post(
+  '/apple-login',
+  validator.body(validationSchema.appleLogin),
+  controller.appleLogin,
+);
+
 module.exports = router;
 
 
