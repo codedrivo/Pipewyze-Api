@@ -632,11 +632,15 @@ const subscribePlan = catchAsync(async (req, res) => {
     startDate: now,
     currentPeriodStart: now,
     currentPeriodEnd: periodEnd,
+    cancelAtPeriodEnd: false,
   };
 
   let subscription = await Subscription.findOneAndUpdate(
     { userId: user._id },
-    subscriptionData,
+    {
+      $set: subscriptionData,
+      $unset: { canceledAt: 1 },
+    },
     { upsert: true, new: true },
   )
     .populate(
