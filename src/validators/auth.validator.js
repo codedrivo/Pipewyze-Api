@@ -115,6 +115,15 @@ const googleLogin = Joi.object({
     .default('home-owner'),
 });
 
+const appleLogin = Joi.object({
+  identityToken: Joi.string().required(),
+  fullName: Joi.string().allow('', null).optional(),
+  email: Joi.string().email().allow('', null).optional(),
+  role: Joi.string()
+    .valid('home-owner', 'apprentice', 'licensed-plumber')
+    .default('home-owner'),
+});
+
 module.exports = {
   login,
   adminLogin,
@@ -130,5 +139,6 @@ module.exports = {
   ctgreset,
   register,
   googleLogin,
+  appleLogin,
 };
 

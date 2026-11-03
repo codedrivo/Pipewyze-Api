@@ -373,6 +373,80 @@ const googleLogin = async (idToken, requestedRole = 'home-owner') => {
   return getUserById(user._id);
 };
 
+const appleLogin = async (identityToken, clientFullName, requestedRole = 'home-owner', clientEmail = null) => {
+  const appleSignin = require('apple-signin-auth');
+  const crypto = require('crypto');
+  const appleClientId = process.env.APPLE_CLIENT_ID;
+
+  let audience;
+  if (appleClientId) {
+    const ids = appleClientId
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean);
+    audience = ids.length === 1 ? ids[0] : ids;
+  }
+
+  let payload;
+  try {
+    payload = await appleSignin.verifyIdToken(identityToken, {
+      ...(audience && { audience }),
+      ignoreExpiration: false,
+    });
+  } catch (err) {
+    console.error('[APPLE AUTH ERROR]:', err.message);
+    throw new ApiError('Invalid Apple identity token', 401);
+  }
+
+  const { sub: appleId } = payload;
+  const email = clientEmail || payload.email;
+  if (!appleId) {
+    throw new ApiError('Invalid Apple token: subject missing', 401);
+  }
+
+  // Search by appleId first, or by email if email is present
+  const query = [{ appleId }];
+  if (email) {
+    query.push({ email: email.toLowerCase() });
+  }
+
+  let user = await User.findOne({ $or: query });
+
+  if (!user) {
+    if (!email) {
+      throw new ApiError(
+        'Apple did not share an email address. If you previously signed in, revoke app permissions in your Apple ID settings and try again.',
+        400,
+      );
+    }
+    const randomPassword = crypto.randomBytes(16).toString('hex') + 'A1!';
+    user = await User.create({
+      appleId,
+      email: email.toLowerCase(),
+      fullName: clientFullName || email.split('@')[0],
+      password: randomPassword,
+      role: requestedRole || 'home-owner',
+      isOnline: true,
+    });
+  } else {
+    let isModified = false;
+    if (!user.appleId) {
+      user.appleId = appleId;
+      isModified = true;
+    }
+    if (clientFullName && (!user.fullName || user.fullName === user.email?.split('@')[0])) {
+      user.fullName = clientFullName;
+      isModified = true;
+    }
+    user.isOnline = true;
+    if (isModified) {
+      await user.save({ validateBeforeSave: false });
+    }
+  }
+
+  return getUserById(user._id);
+};
+
 module.exports = {
   createUser,
   loginUser,
@@ -390,5 +464,6 @@ module.exports = {
   findUserByPhone,
   addSupport,
   googleLogin,
+  appleLogin,
 };
 
