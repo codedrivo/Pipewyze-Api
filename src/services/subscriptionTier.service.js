@@ -111,9 +111,8 @@ const getUserSubscriptionDetails = async (userId) => {
     currentPeriodEnd: isFreemium ? null : sub?.currentPeriodEnd || null,
     canCancel: isFreemium
       ? false
-      : sub?.canCancel !== undefined
-      ? sub.canCancel
-      : sub?.status === 'active',
+      : ['active', 'trialing', 'past_due'].includes(sub?.status) &&
+        sub?.cancelAtPeriodEnd !== true,
     plan: planDetail,
     permissions,
   };

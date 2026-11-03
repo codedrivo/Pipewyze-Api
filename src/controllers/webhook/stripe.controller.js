@@ -54,12 +54,20 @@ const handleStripeWebhook = async (req, res) => {
             stripeSubscriptionId: session.subscription || session.id || '',
             status: 'active',
             startDate: new Date(),
+            cancelAtPeriodEnd: false,
           };
 
-          await Subscription.findOneAndUpdate({ userId }, subscriptionData, {
-            upsert: true,
-            new: true,
-          });
+          await Subscription.findOneAndUpdate(
+            { userId },
+            {
+              $set: subscriptionData,
+              $unset: { canceledAt: 1 },
+            },
+            {
+              upsert: true,
+              new: true,
+            },
+          );
 
           await syncUserSubscriptionTier(userId);
           logger.info(

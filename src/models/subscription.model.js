@@ -97,12 +97,18 @@ const subscriptionSchema = new mongoose.Schema(
 
 subscriptionSchema.virtual('canCancel').get(function canCancel() {
   return (
-    ['active', 'trialing', 'past_due'].includes(this.status) && !this.canceledAt
+    ['active', 'trialing', 'past_due'].includes(this.status) &&
+    !this.cancelAtPeriodEnd &&
+    this.status !== 'canceled'
   );
 });
 
 subscriptionSchema.virtual('canUpdate').get(function canUpdate() {
-  return ['active', 'trialing'].includes(this.status) && !this.canceledAt;
+  return (
+    ['active', 'trialing'].includes(this.status) &&
+    !this.cancelAtPeriodEnd &&
+    this.status !== 'canceled'
+  );
 });
 
 subscriptionSchema.plugin(toJSON);
