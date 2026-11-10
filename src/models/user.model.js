@@ -93,6 +93,14 @@ const userSchema = new mongoose.Schema(
       enum: ['freemium', 'standard', 'professional'],
       default: 'freemium',
     },
+    trialStartDate: {
+      type: Date,
+      default: Date.now,
+    },
+    trialEndDate: {
+      type: Date,
+      default: () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    },
   },
   {
     timestamps: true,

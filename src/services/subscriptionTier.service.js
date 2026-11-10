@@ -30,10 +30,15 @@ const getUserSubscriptionDetails = async (userId) => {
     }
   }
 
+  const tierRegex = new RegExp(
+    `^${String(tier).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`,
+    'i',
+  );
+
   // If no active subscription plan object found, fetch the db plan for this tier or default freemium
   if (!activePlan) {
     activePlan = await SubscriptionPlan.findOne({
-      tier,
+      tier: { $regex: tierRegex },
       isActive: true,
     }).sort({ order: 1 });
   }
@@ -46,7 +51,7 @@ const getUserSubscriptionDetails = async (userId) => {
     activePlan.isActive === false
   ) {
     const fallbackPlan = await SubscriptionPlan.findOne({
-      tier,
+      tier: { $regex: tierRegex },
       isActive: true,
     }).sort({ order: 1 });
     if (fallbackPlan) {
@@ -56,9 +61,9 @@ const getUserSubscriptionDetails = async (userId) => {
 
   if (!activePlan) {
     activePlan = await SubscriptionPlan.findOne({
-      tier: 'freemium',
+      tier: { $regex: /^freemium$/i },
       isActive: true,
-    });
+    }).sort({ order: 1 });
   }
 
   // Build key-value feature permissions map for easy consumption on mobile client
@@ -101,14 +106,86 @@ const getUserSubscriptionDetails = async (userId) => {
     : null;
 
   const isFreemium = tier === 'freemium';
+  const now = new Date();
+
+  const trialStartDate = user?.trialStartDate
+    ? new Date(user.trialStartDate)
+    : user?.createdAt
+    ? new Date(user.createdAt)
+    : now;
+  const trialEndDate = user?.trialEndDate
+    ? new Date(user.trialEndDate)
+    : new Date(trialStartDate.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+  const hasCanceledPaidSub =
+    isFreemium && latestSubscription && latestSubscription.status === 'canceled';
+
+  const isTrialActive = isFreemium
+    ? !hasCanceledPaidSub && now < trialEndDate
+    : sub?.status === 'trialing';
+
+  const isTrialExpired = isFreemium
+    ? hasCanceledPaidSub || now >= trialEndDate
+    : false;
+
+  const trialDaysRemaining = isFreemium
+    ? isTrialActive
+      ? Math.max(
+          1,
+          Math.ceil(
+            (trialEndDate.getTime() - now.getTime()) / (24 * 60 * 60 * 1000),
+          ),
+        )
+      : 0
+    : sub?.status === 'trialing' && sub?.currentPeriodEnd
+    ? Math.max(
+        0,
+        Math.ceil(
+          (new Date(sub.currentPeriodEnd).getTime() - now.getTime()) /
+            (24 * 60 * 60 * 1000),
+        ),
+      )
+    : 0;
+
+  const requiresPlanSelection = isFreemium && isTrialExpired;
+
+  // Only fall back to true during an active 7-day trial if no freemium plan exists in DB;
+  // whenever an admin-configured freemium plan exists, permissions strictly match its accessibleFeatures
+  if (
+    isFreemium &&
+    isTrialActive &&
+    (!activePlan ||
+      String(activePlan.tier || '').trim().toLowerCase() !== 'freemium')
+  ) {
+    Object.keys(permissions).forEach((key) => {
+      permissions[key] = true;
+    });
+  }
+
+  let resolvedStatus = sub ? sub.status : 'inactive';
+  if (isFreemium) {
+    if (hasCanceledPaidSub) {
+      resolvedStatus = 'canceled';
+    } else if (isTrialActive) {
+      resolvedStatus = 'trialing';
+    } else {
+      resolvedStatus = 'expired';
+    }
+  }
 
   return {
     tier,
-    status: sub ? sub.status : 'inactive',
+    status: resolvedStatus,
     orderId: sub?.orderId || null,
     startDate: isFreemium ? null : sub?.startDate || null,
     currentPeriodStart: isFreemium ? null : sub?.currentPeriodStart || null,
     currentPeriodEnd: isFreemium ? null : sub?.currentPeriodEnd || null,
+    trialStartDate,
+    trialEndDate,
+    trialDaysRemaining,
+    isTrialActive,
+    isTrialExpired,
+    requiresPlanSelection,
     canCancel: isFreemium
       ? false
       : ['active', 'trialing', 'past_due'].includes(sub?.status) &&

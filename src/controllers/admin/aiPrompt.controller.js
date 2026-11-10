@@ -110,20 +110,25 @@ const getSuggestedPrompts = catchAsync(async (req, res) => {
 
 const getAiUsageStatus = catchAsync(async (req, res) => {
   const userId = req.user.id || req.user._id;
+  const { getUserSubscriptionDetails } = require('../../services/subscriptionTier.service');
 
-  const usedCount = await AiChat.countDocuments({ userId });
+  const [usedCount, subscriptionDetails] = await Promise.all([
+    AiChat.countDocuments({ userId }),
+    getUserSubscriptionDetails(userId),
+  ]);
 
-  const subscription = await Subscription.findOne({
-    userId,
-    status: { $in: ['active', 'trialing'] },
-  });
-
-  const isSubscribed = !!subscription;
+  const isSubscribed = subscriptionDetails.tier !== 'freemium';
 
   res.status(200).json({
     status: 200,
     usedCount,
     isSubscribed,
+    tier: subscriptionDetails.tier,
+    isTrialActive: subscriptionDetails.isTrialActive,
+    isTrialExpired: subscriptionDetails.isTrialExpired,
+    trialDaysRemaining: subscriptionDetails.trialDaysRemaining,
+    requiresPlanSelection: subscriptionDetails.requiresPlanSelection,
+    permissions: subscriptionDetails.permissions,
   });
 });
 

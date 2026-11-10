@@ -17,18 +17,28 @@ const notifyAdmin = catchAsync(async (req, res) => {
   });
 });
 
+const { getUserSubscriptionDetails } = require('../../services/subscriptionTier.service');
+
+const buildAuthUserPayload = async (user) => {
+  const subscriptionDetails = await getUserSubscriptionDetails(user._id);
+  return {
+    ...user.toObject(),
+    subscriptionTier: subscriptionDetails.tier,
+    permissions: subscriptionDetails.permissions,
+    isTrialActive: subscriptionDetails.isTrialActive,
+    isTrialExpired: subscriptionDetails.isTrialExpired,
+    trialStartDate: subscriptionDetails.trialStartDate,
+    trialEndDate: subscriptionDetails.trialEndDate,
+    trialDaysRemaining: subscriptionDetails.trialDaysRemaining,
+    requiresPlanSelection: subscriptionDetails.requiresPlanSelection,
+  };
+};
+
 // Register
 const register = catchAsync(async (req, res, next) => {
   const user = await service.createUser(req.body);
   const tokens = await token.generateAuthTokens(user);
-  const { getUserSubscriptionDetails } = require('../../services/subscriptionTier.service');
-  const subscriptionDetails = await getUserSubscriptionDetails(user._id);
-
-  const userObj = {
-    ...user.toObject(),
-    subscriptionTier: subscriptionDetails.tier,
-    permissions: subscriptionDetails.permissions,
-  };
+  const userObj = await buildAuthUserPayload(user);
 
   res.status(201).send({
     message: 'Registration successful, please login',
@@ -46,15 +56,7 @@ const login = catchAsync(async (req, res, next) => {
   const user = await service.loginUser(email, password, role);
 
   const tokens = await token.generateAuthTokens(user);
-
-  const { getUserSubscriptionDetails } = require('../../services/subscriptionTier.service');
-  const subscriptionDetails = await getUserSubscriptionDetails(user._id);
-
-  const userObj = {
-    ...user.toObject(),
-    subscriptionTier: subscriptionDetails.tier,
-    permissions: subscriptionDetails.permissions,
-  };
+  const userObj = await buildAuthUserPayload(user);
 
   res.status(200).send({
     message: 'Login successful',
@@ -239,15 +241,7 @@ const googleLogin = catchAsync(async (req, res) => {
   const { idToken, role } = req.body;
   const user = await service.googleLogin(idToken, role);
   const tokens = await token.generateAuthTokens(user);
-
-  const { getUserSubscriptionDetails } = require('../../services/subscriptionTier.service');
-  const subscriptionDetails = await getUserSubscriptionDetails(user._id);
-
-  const userObj = {
-    ...user.toObject(),
-    subscriptionTier: subscriptionDetails.tier,
-    permissions: subscriptionDetails.permissions,
-  };
+  const userObj = await buildAuthUserPayload(user);
 
   res.status(200).send({
     message: 'Google login successful',
@@ -263,15 +257,7 @@ const appleLogin = catchAsync(async (req, res) => {
   const { identityToken, fullName, email, role } = req.body;
   const user = await service.appleLogin(identityToken, fullName, role, email);
   const tokens = await token.generateAuthTokens(user);
-
-  const { getUserSubscriptionDetails } = require('../../services/subscriptionTier.service');
-  const subscriptionDetails = await getUserSubscriptionDetails(user._id);
-
-  const userObj = {
-    ...user.toObject(),
-    subscriptionTier: subscriptionDetails.tier,
-    permissions: subscriptionDetails.permissions,
-  };
+  const userObj = await buildAuthUserPayload(user);
 
   res.status(200).send({
     message: 'Apple login successful',

@@ -4,6 +4,6 @@ const { requireFeaturePermission } = require('../../../middlewares/permission.mi
 const aiPromptController = require('../../../controllers/admin/aiPrompt.controller');
 
 router.get('/suggested', auth(), requireFeaturePermission('ai_assistant'), aiPromptController.getSuggestedPrompts);
-router.get('/status', auth(), requireFeaturePermission('ai_assistant'), aiPromptController.getAiUsageStatus);
+router.get('/status', auth(), aiPromptController.getAiUsageStatus);
 
 module.exports = router;
