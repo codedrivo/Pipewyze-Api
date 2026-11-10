@@ -1566,6 +1566,26 @@ io.on('connection', async (socket) => {
         return socket.emit('ai_error', errRes);
       }
 
+      if (user.role !== 'admin') {
+        const { getUserSubscriptionDetails } = require('./services/subscriptionTier.service');
+        const subscriptionDetails = await getUserSubscriptionDetails(uid);
+        if (subscriptionDetails.requiresPlanSelection) {
+          const errRes = {
+            message: 'Your 7-day free trial has ended. Please choose a Standard or Professional plan to continue.',
+            requiresPlanSelection: true,
+          };
+          if (typeof ack === 'function') ack({ success: false, ...errRes });
+          return socket.emit('ai_error', errRes);
+        }
+        if (!subscriptionDetails.permissions?.ai_assistant) {
+          const errRes = {
+            message: `AI Assistant is not included in your current subscription tier (${subscriptionDetails.tier || 'freemium'}). Please upgrade your plan.`,
+          };
+          if (typeof ack === 'function') ack({ success: false, ...errRes });
+          return socket.emit('ai_error', errRes);
+        }
+      }
+
       let finalFileUrl = fileUrl || '';
       let finalFileType = fileType || '';
 

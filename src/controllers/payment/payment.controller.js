@@ -277,7 +277,10 @@ const {
  * Get available service plans (created in Admin Panel) for mobile
  */
 const getServicePlans = catchAsync(async (req, res) => {
-  const plans = await SubscriptionPlan.find({ isActive: true }).sort({
+  const plans = await SubscriptionPlan.find({
+    isActive: true,
+    tier: { $not: /^freemium$/i },
+  }).sort({
     order: 1,
   });
   res.status(200).json({
@@ -500,6 +503,7 @@ const subscribePlan = catchAsync(async (req, res) => {
 
   let paymentIntentId = `pi_local_${Date.now()}`;
   let stripeSubscriptionId = '';
+  let subscriptionStatus = 'active';
 
   // Prevent rapid double-clicks (e.g. mobile button tapped twice within seconds)
   const idempotencyKey = `sub_${user._id}_${
@@ -593,11 +597,13 @@ const subscribePlan = catchAsync(async (req, res) => {
       }
 
       // Create Stripe Subscription
+      const trialDays = Number(plan.trialDays) || 0;
       const stripeSub = await stripe.subscriptions.create(
         {
           customer: customerId,
           items: [subscriptionItem],
           default_payment_method: defaultPaymentMethodId,
+          ...(trialDays > 0 && { trial_period_days: trialDays }),
           expand: ['latest_invoice.payment_intent'],
           metadata: {
             userId: user._id.toString(),
@@ -611,6 +617,11 @@ const subscribePlan = catchAsync(async (req, res) => {
       );
 
       stripeSubscriptionId = stripeSub.id;
+      subscriptionStatus =
+        stripeSub.status === 'trialing' ? 'trialing' : 'active';
+      if (stripeSub.current_period_end) {
+        periodEnd.setTime(stripeSub.current_period_end * 1000);
+      }
       paymentIntentId =
         stripeSub.latest_invoice?.payment_intent?.id ||
         stripeSub.latest_invoice?.id ||
@@ -628,7 +639,7 @@ const subscribePlan = catchAsync(async (req, res) => {
     orderId,
     stripeCustomerId: customerId,
     stripeSubscriptionId,
-    status: 'active',
+    status: subscriptionStatus,
     startDate: now,
     currentPeriodStart: now,
     currentPeriodEnd: periodEnd,

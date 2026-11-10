@@ -17,17 +17,23 @@ const requireFeaturePermission = (featureKey) => {
       return next();
     }
 
-    /*
     const subscriptionDetails = await getUserSubscriptionDetails(req.user._id);
+
+    if (subscriptionDetails.requiresPlanSelection) {
+      throw new ApiError(
+        'Your 7-day free trial has ended. Please choose a Standard or Professional plan to continue.',
+        403,
+      );
+    }
+
     const permissions = subscriptionDetails.permissions || {};
 
     if (!permissions[featureKey]) {
       throw new ApiError(
         `Feature access denied: your active subscription tier (${subscriptionDetails.tier || 'freemium'}) does not include access to '${featureKey}'.`,
-        403
+        403,
       );
     }
-    */
 
     next();
   });
