@@ -6,6 +6,7 @@ const logger = require('./config/logger');
 const config = require('./config/config');
 const Setting = require('./models/setting.model');
 const notificationService = require('./services/notification.service');
+const trialReminderService = require('./services/trialReminder.service');
 
 let server;
 
@@ -58,6 +59,16 @@ mongoose.connect(config.mongoose.url).then(() => {
       }
     } catch (err) {
       console.error('Error in service reminder cron job:', err);
+    }
+  });
+
+  // Freemium trial reminder cron job - runs daily at 9:00 AM (configurable via TRIAL_REMINDER_CRON)
+  const trialReminderSchedule = process.env.TRIAL_REMINDER_CRON || '0 9 * * *';
+  cron.schedule(trialReminderSchedule, async () => {
+    try {
+      await trialReminderService.sendFreemiumTrialReminders();
+    } catch (err) {
+      console.error('Error in freemium trial reminder cron job:', err);
     }
   });
 });
