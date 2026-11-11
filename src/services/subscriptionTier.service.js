@@ -59,7 +59,10 @@ const getUserSubscriptionDetails = async (userId) => {
     }
   }
 
-  if (!activePlan) {
+  const normalizedTier = String(tier || 'freemium').trim().toLowerCase();
+  const isFreemium = normalizedTier === 'freemium';
+
+  if (!activePlan && isFreemium) {
     activePlan = await SubscriptionPlan.findOne({
       tier: { $regex: /^freemium$/i },
       isActive: true,
@@ -105,7 +108,6 @@ const getUserSubscriptionDetails = async (userId) => {
       }
     : null;
 
-  const isFreemium = tier === 'freemium';
   const now = new Date();
 
   const trialStartDate = user?.trialStartDate
@@ -149,13 +151,19 @@ const getUserSubscriptionDetails = async (userId) => {
 
   const requiresPlanSelection = isFreemium && isTrialExpired;
 
-  // Only fall back to true during an active 7-day trial if no freemium plan exists in DB;
-  // whenever an admin-configured freemium plan exists, permissions strictly match its accessibleFeatures
+  // Only fall back to true during an active 7-day trial if no freemium plan exists in DB,
+  // or for an active paid plan if no accessibleFeatures array was configured yet.
+  const hasConfiguredFeatures =
+    activePlan &&
+    Array.isArray(activePlan.accessibleFeatures) &&
+    activePlan.accessibleFeatures.length > 0;
+
   if (
-    isFreemium &&
-    isTrialActive &&
-    (!activePlan ||
-      String(activePlan.tier || '').trim().toLowerCase() !== 'freemium')
+    (isFreemium &&
+      isTrialActive &&
+      (!activePlan ||
+        String(activePlan.tier || '').trim().toLowerCase() !== 'freemium')) ||
+    (!isFreemium && !hasConfiguredFeatures)
   ) {
     Object.keys(permissions).forEach((key) => {
       permissions[key] = true;
@@ -174,7 +182,7 @@ const getUserSubscriptionDetails = async (userId) => {
   }
 
   return {
-    tier,
+    tier: normalizedTier,
     status: resolvedStatus,
     orderId: sub?.orderId || null,
     startDate: isFreemium ? null : sub?.startDate || null,
