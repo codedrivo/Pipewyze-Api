@@ -699,6 +699,7 @@ const Settings = require('./models/setting.model');
 const Subscription = require('./models/subscription.model');
 const notificationService = require('./services/notification.service');
 const aiAssistant = require('./helpers/aiAssistant.helper');
+const { getUserSubscriptionDetails } = require('./services/subscriptionTier.service');
 
 const app = express();
 const server = http.createServer(app);
@@ -1552,37 +1553,92 @@ io.on('connection', async (socket) => {
 
   // Ask AI Assistant Handler
   socket.on('ask_ai', async ({ message, fileUrl, fileType, fileName } = {}, ack) => {
+    const cleanInputMsg = message ? message.trim() : '';
+
+    const emitAiPayload = (payload, extraAck = {}) => {
+      if (socket.connected) {
+        socket.emit('ai_response', payload);
+        socket.emit('ai_message', payload);
+        socket.emit('new_ai_message', payload);
+      }
+      io.to(`user_${uid}`).emit('ai_response', payload);
+
+      if (typeof ack === 'function') {
+        ack({ success: true, data: payload, response: payload, ...extraAck });
+      }
+    };
+
+    const emitAiSystemReply = (replyText, extra = {}) => {
+      const nowIso = new Date().toISOString();
+      const recordId = new mongoose.Types.ObjectId().toString();
+      const payload = {
+        _id: recordId,
+        id: recordId,
+        sender: 'ai',
+        role: 'assistant',
+        message: replyText,
+        content: replyText,
+        response: replyText,
+        text: replyText,
+        userMessage: cleanInputMsg || 'Message',
+        user_message: cleanInputMsg || 'Message',
+        suggestedVideo: null,
+        fileUrl: '',
+        file_url: '',
+        url: '',
+        mediaUrl: '',
+        media_url: '',
+        fileType: '',
+        file_type: '',
+        type: '',
+        mediaType: '',
+        media_type: '',
+        fileName: fileName || '',
+        createdAt: nowIso,
+        created_at: nowIso,
+        timestamp: nowIso,
+        status: 'success',
+        ...extra,
+      };
+
+      if (socket.connected) {
+        socket.emit('ai_message_received', {
+          userMessage: cleanInputMsg || 'Message',
+          fileUrl: '',
+          fileType: '',
+          status: 'processing',
+        });
+      }
+
+      emitAiPayload(payload, extra);
+    };
+
     try {
-      if ((!message || !message.trim()) && !fileUrl) {
+      if (!cleanInputMsg && !fileUrl) {
         const errRes = { message: 'Please enter a question or upload a file.' };
         if (typeof ack === 'function') ack({ success: false, ...errRes });
-        return socket.emit('ai_error', errRes);
+        if (socket.connected) socket.emit('ai_error', errRes);
+        return;
       }
 
       const user = await User.findById(uid, 'role').lean();
       if (!user) {
-        const errRes = { message: 'User not found.' };
-        if (typeof ack === 'function') ack({ success: false, ...errRes });
-        return socket.emit('ai_error', errRes);
+        return emitAiSystemReply('User not found. Please log in again.');
       }
 
       if (user.role !== 'admin') {
-        const { getUserSubscriptionDetails } = require('./services/subscriptionTier.service');
         const subscriptionDetails = await getUserSubscriptionDetails(uid);
         if (subscriptionDetails.requiresPlanSelection) {
-          const errRes = {
-            message: 'Your 7-day free trial has ended. Please choose a Standard or Professional plan to continue.',
-            requiresPlanSelection: true,
-          };
-          if (typeof ack === 'function') ack({ success: false, ...errRes });
-          return socket.emit('ai_error', errRes);
+          return emitAiSystemReply(
+            'Your 7-day free trial has ended. Please choose a Standard or Professional plan to continue.',
+            { requiresPlanSelection: true, upgradeRequired: true },
+          );
         }
         if (!subscriptionDetails.permissions?.ai_assistant) {
-          const errRes = {
-            message: `AI Assistant is not included in your current subscription tier (${subscriptionDetails.tier || 'freemium'}). Please upgrade your plan.`,
-          };
-          if (typeof ack === 'function') ack({ success: false, ...errRes });
-          return socket.emit('ai_error', errRes);
+          return emitAiSystemReply(
+            `AI Assistant is not included in your current subscription tier (${subscriptionDetails.tier || 'freemium'}). Please upgrade your plan.`,
+            { upgradeRequired: true },
+          );
         }
       }
 
@@ -1596,9 +1652,7 @@ io.on('connection', async (socket) => {
           finalFileType = uploadResult.fileType;
         } catch (e) {
           console.error('[AI Base64 Upload Error]:', e.message);
-          const errRes = { message: 'Failed to upload media file to server.' };
-          if (typeof ack === 'function') ack({ success: false, ...errRes });
-          return socket.emit('ai_error', errRes);
+          return emitAiSystemReply('Failed to upload media file to server. Please try again.');
         }
       }
 
@@ -1608,16 +1662,18 @@ io.on('connection', async (socket) => {
           finalFileUrl || fileName || '',
         );
 
-      const cleanMessage = message ? message.trim() : '';
+      const cleanMessage = cleanInputMsg;
       const mediaContext = isVideo ? 'video' : finalFileUrl ? 'image' : null;
 
       // Immediately notify client socket that the message was received by server
-      socket.emit('ai_message_received', {
-        userMessage: cleanMessage || (isVideo ? 'Video' : 'Photo'),
-        fileUrl: finalFileUrl,
-        fileType: finalFileType,
-        status: 'processing',
-      });
+      if (socket.connected) {
+        socket.emit('ai_message_received', {
+          userMessage: cleanMessage || (isVideo ? 'Video' : 'Photo'),
+          fileUrl: finalFileUrl,
+          fileType: finalFileType,
+          status: 'processing',
+        });
+      }
 
       const { isWorkRelated, searchQuery } =
         aiAssistant.isWorkRelatedQuestion(cleanMessage);
@@ -1720,23 +1776,10 @@ io.on('connection', async (socket) => {
         status: 'success',
       };
 
-      if (socket.connected) {
-        socket.emit('ai_response', responsePayload);
-        socket.emit('ai_message', responsePayload);
-        socket.emit('new_ai_message', responsePayload);
-        io.to(`user_${uid}`).emit('ai_response', responsePayload);
-      }
-
-      if (typeof ack === 'function') {
-        ack({ success: true, data: responsePayload, response: responsePayload });
-      }
+      emitAiPayload(responsePayload);
     } catch (err) {
       console.error('[ask_ai Error]:', err.message);
-      const errRes = { message: 'Failed to process AI assistant request.' };
-      if (typeof ack === 'function') ack({ success: false, ...errRes });
-      if (socket.connected) {
-        socket.emit('ai_error', errRes);
-      }
+      emitAiSystemReply('Failed to process AI assistant request. Please try again.');
     }
   });
 
