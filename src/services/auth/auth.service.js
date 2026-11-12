@@ -2,6 +2,16 @@ const User = require('../../models/user.model');
 const bcrypt = require('bcrypt');
 const mongoose = require('mongoose');
 const ApiError = require('../../helpers/apiErrorConverter');
+const { getFreemiumTrialDays } = require('../subscriptionTier.service');
+
+const buildTrialWindow = async () => {
+  const now = new Date();
+  const trialDays = await getFreemiumTrialDays();
+  return {
+    trialStartDate: now,
+    trialEndDate: new Date(now.getTime() + trialDays * 24 * 60 * 60 * 1000),
+  };
+};
 
 // Create new user
 const createUser = async (data) => {
@@ -26,12 +36,11 @@ const createUser = async (data) => {
     data.fullName = `${data.firstName} ${data.lastName || ''}`.trim();
   }
 
-  // Always default newly registered users to freemium tier with a 7-day free trial
-  const now = new Date();
+  // Default newly registered users to freemium tier with admin-configured trial period
+  const { trialStartDate, trialEndDate } = await buildTrialWindow();
   data.subscriptionTier = 'freemium';
-  data.trialStartDate = data.trialStartDate || now;
-  data.trialEndDate =
-    data.trialEndDate || new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  data.trialStartDate = data.trialStartDate || trialStartDate;
+  data.trialEndDate = data.trialEndDate || trialEndDate;
 
   // Create user
   const user = await User.create(data);
@@ -348,8 +357,8 @@ const googleLogin = async (idToken, requestedRole = 'home-owner') => {
   });
 
   if (!user) {
-    // Create new user for Google login with 7-day freemium trial
-    const now = new Date();
+    // Create new user for Google login with admin-configured freemium trial
+    const { trialStartDate, trialEndDate } = await buildTrialWindow();
     const randomPassword = crypto.randomBytes(16).toString('hex') + 'A1!';
     user = await User.create({
       googleId,
@@ -359,8 +368,8 @@ const googleLogin = async (idToken, requestedRole = 'home-owner') => {
       role: requestedRole || 'home-owner',
       profileimageurl: picture || '',
       subscriptionTier: 'freemium',
-      trialStartDate: now,
-      trialEndDate: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
+      trialStartDate,
+      trialEndDate,
       isOnline: true,
     });
   } else {
@@ -427,7 +436,7 @@ const appleLogin = async (identityToken, clientFullName, requestedRole = 'home-o
         400,
       );
     }
-    const now = new Date();
+    const { trialStartDate, trialEndDate } = await buildTrialWindow();
     const randomPassword = crypto.randomBytes(16).toString('hex') + 'A1!';
     user = await User.create({
       appleId,
@@ -436,8 +445,8 @@ const appleLogin = async (identityToken, clientFullName, requestedRole = 'home-o
       password: randomPassword,
       role: requestedRole || 'home-owner',
       subscriptionTier: 'freemium',
-      trialStartDate: now,
-      trialEndDate: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
+      trialStartDate,
+      trialEndDate,
       isOnline: true,
     });
   } else {

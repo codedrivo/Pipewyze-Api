@@ -111,6 +111,45 @@ const getPlans = catchAsync(async (req, res) => {
   });
 });
 
+const syncFreemiumUsersTrialEndDate = async (trialDays) => {
+  const User = require('../../models/user.model');
+  const days = Math.max(0, Number(trialDays) || 0);
+  const durationMs = days * 24 * 60 * 60 * 1000;
+
+  const freemiumUsers = await User.find({
+    role: { $ne: 'admin' },
+    $or: [
+      { subscriptionTier: 'freemium' },
+      { subscriptionTier: { $exists: false } },
+      { subscriptionTier: null },
+    ],
+  })
+    .select('_id createdAt trialStartDate')
+    .lean();
+
+  if (freemiumUsers.length === 0) return;
+
+  const bulkOps = freemiumUsers.map((u) => {
+    const start = u.trialStartDate
+      ? new Date(u.trialStartDate)
+      : u.createdAt
+      ? new Date(u.createdAt)
+      : new Date();
+    return {
+      updateOne: {
+        filter: { _id: u._id },
+        update: {
+          $set: {
+            trialStartDate: start,
+            trialEndDate: new Date(start.getTime() + durationMs),
+          },
+        },
+      },
+    };
+  });
+  await User.bulkWrite(bulkOps);
+};
+
 const createPlan = catchAsync(async (req, res) => {
   const {
     name,
@@ -136,13 +175,20 @@ const createPlan = catchAsync(async (req, res) => {
     throw new ApiError(`Plan with name '${name}' already exists`, 400);
   }
 
+  const isTrialEligibleTier = ['standard', 'professional'].includes(
+    String(tier).trim().toLowerCase(),
+  );
+  const normalizedTrialDays = isTrialEligibleTier
+    ? Math.max(0, Number(trialDays) || 0)
+    : 0;
+
   const plan = await SubscriptionPlan.create({
     name,
     tier,
     description: description || '',
     monthlyPrice: Number(monthlyPrice) || 0,
     yearlyPrice: Number(yearlyPrice) || 0,
-    trialDays: Number(trialDays) || 0,
+    trialDays: normalizedTrialDays,
     features: Array.isArray(features) ? features : [],
     accessibleFeatures: Array.isArray(accessibleFeatures) ? accessibleFeatures : [],
     stripeMonthlyPriceId: stripeMonthlyPriceId || '',
@@ -150,6 +196,10 @@ const createPlan = catchAsync(async (req, res) => {
     isActive: isActive !== undefined ? isActive : true,
     order: Number(order) || 0,
   });
+
+  if (isTrialEligibleTier && plan.isActive !== false && plan.trialDays > 0) {
+    await syncFreemiumUsersTrialEndDate(plan.trialDays);
+  }
 
   res.status(201).json({
     status: 201,
@@ -186,7 +236,14 @@ const updatePlan = catchAsync(async (req, res) => {
   if (description !== undefined) plan.description = description;
   if (monthlyPrice !== undefined) plan.monthlyPrice = Number(monthlyPrice);
   if (yearlyPrice !== undefined) plan.yearlyPrice = Number(yearlyPrice);
-  if (trialDays !== undefined) plan.trialDays = Number(trialDays);
+  const effectiveIsTrialEligible = ['standard', 'professional'].includes(
+    String(plan.tier || '').trim().toLowerCase(),
+  );
+  if (!effectiveIsTrialEligible) {
+    plan.trialDays = 0;
+  } else if (trialDays !== undefined) {
+    plan.trialDays = Math.max(0, Number(trialDays) || 0);
+  }
   if (features !== undefined) plan.features = Array.isArray(features) ? features : [];
   if (accessibleFeatures !== undefined) {
     plan.accessibleFeatures = Array.isArray(accessibleFeatures) ? accessibleFeatures : [];
@@ -197,6 +254,10 @@ const updatePlan = catchAsync(async (req, res) => {
   if (order !== undefined) plan.order = Number(order);
 
   await plan.save();
+
+  if (effectiveIsTrialEligible && plan.isActive !== false && plan.trialDays > 0) {
+    await syncFreemiumUsersTrialEndDate(plan.trialDays);
+  }
 
   res.status(200).json({
     status: 200,

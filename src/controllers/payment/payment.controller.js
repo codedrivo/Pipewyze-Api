@@ -596,6 +596,19 @@ const subscribePlan = catchAsync(async (req, res) => {
         }
       }
 
+      // Ensure the selected card is set as the customer's default invoice payment method for automatic post-trial billing
+      try {
+        await stripe.customers.update(customerId, {
+          invoice_settings: {
+            default_payment_method: defaultPaymentMethodId,
+          },
+        });
+      } catch (custUpdateErr) {
+        logger.warn(
+          `[subscribePlan] Could not update customer default payment method: ${custUpdateErr.message}`,
+        );
+      }
+
       // Create Stripe Subscription
       const trialDays = Number(plan.trialDays) || 0;
       const stripeSub = await stripe.subscriptions.create(
@@ -603,7 +616,17 @@ const subscribePlan = catchAsync(async (req, res) => {
           customer: customerId,
           items: [subscriptionItem],
           default_payment_method: defaultPaymentMethodId,
-          ...(trialDays > 0 && { trial_period_days: trialDays }),
+          payment_settings: {
+            save_default_payment_method: 'on_subscription',
+          },
+          ...(trialDays > 0 && {
+            trial_period_days: trialDays,
+            trial_settings: {
+              end_behavior: {
+                missing_payment_method: 'cancel',
+              },
+            },
+          }),
           expand: ['latest_invoice.payment_intent'],
           metadata: {
             userId: user._id.toString(),
@@ -611,6 +634,7 @@ const subscribePlan = catchAsync(async (req, res) => {
             tier: plan.tier || 'standard',
             billingCycle,
             interval,
+            trialDays: String(trialDays),
           },
         },
         { idempotencyKey },
@@ -619,7 +643,9 @@ const subscribePlan = catchAsync(async (req, res) => {
       stripeSubscriptionId = stripeSub.id;
       subscriptionStatus =
         stripeSub.status === 'trialing' ? 'trialing' : 'active';
-      if (stripeSub.current_period_end) {
+      if (stripeSub.status === 'trialing' && stripeSub.trial_end) {
+        periodEnd.setTime(stripeSub.trial_end * 1000);
+      } else if (stripeSub.current_period_end) {
         periodEnd.setTime(stripeSub.current_period_end * 1000);
       }
       paymentIntentId =
@@ -643,6 +669,7 @@ const subscribePlan = catchAsync(async (req, res) => {
     startDate: now,
     currentPeriodStart: now,
     currentPeriodEnd: periodEnd,
+    nextBillingDate: !isOneTime ? periodEnd : undefined,
     cancelAtPeriodEnd: false,
   };
 
@@ -681,11 +708,20 @@ const subscribePlan = catchAsync(async (req, res) => {
     );
   }
 
+  const isTrialing = subscriptionStatus === 'trialing';
+  const effectiveTrialDays = isTrialing ? Number(plan.trialDays) || 0 : 0;
+
   res.status(200).json({
     status: 'success',
-    message: 'Payment completed and subscription activated successfully',
+    message: isTrialing
+      ? `${effectiveTrialDays}-day free trial started successfully. Billing will begin automatically after the trial unless cancelled.`
+      : 'Payment completed and subscription activated successfully',
     data: {
       orderId,
+      isTrialing,
+      trialDays: effectiveTrialDays,
+      trialEndDate: isTrialing ? periodEnd : null,
+      nextBillingDate: !isOneTime ? periodEnd : null,
       user: {
         id: user._id,
         email: user.email,
@@ -756,9 +792,12 @@ const cancelSubscription = catchAsync(async (req, res) => {
       try {
         const customerStripeSubs = await stripe.subscriptions.list({
           customer: customerId,
-          status: 'active',
+          status: 'all',
         });
         for (const stSub of customerStripeSubs.data) {
+          if (!['active', 'trialing', 'past_due'].includes(stSub.status)) {
+            continue;
+          }
           try {
             await stripe.subscriptions.cancel(stSub.id);
             logger.info(

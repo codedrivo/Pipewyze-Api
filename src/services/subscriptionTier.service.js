@@ -2,20 +2,51 @@ const User = require('../models/user.model');
 const Subscription = require('../models/subscription.model');
 const SubscriptionPlan = require('../models/subscriptionPlan.model');
 
+const DEFAULT_FREEMIUM_TRIAL_DAYS = 7;
+
+/**
+ * Fetches the admin-configured trial period in days from active Standard/Professional plans (defaults to 7).
+ */
+const getFreemiumTrialDays = async () => {
+  try {
+    const planWithTrial = await SubscriptionPlan.findOne({
+      tier: { $regex: /^(standard|professional)$/i },
+      isActive: true,
+      trialDays: { $gt: 0 },
+    })
+      .sort({ updatedAt: -1, order: 1 })
+      .select('trialDays')
+      .lean();
+    if (
+      planWithTrial &&
+      planWithTrial.trialDays !== undefined &&
+      planWithTrial.trialDays !== null &&
+      !Number.isNaN(Number(planWithTrial.trialDays))
+    ) {
+      return Math.max(0, Number(planWithTrial.trialDays));
+    }
+  } catch (err) {
+    // Fallback to default if plan lookup fails
+  }
+  return DEFAULT_FREEMIUM_TRIAL_DAYS;
+};
+
 /**
  * Resolves the active subscription tier and plan details for a user.
  */
 const getUserSubscriptionDetails = async (userId) => {
-  const [user, activeSubscription, latestSubscription] = await Promise.all([
-    User.findById(userId).lean(),
-    Subscription.findOne({
-      userId,
-      status: { $in: ['active', 'trialing'] },
-    })
-      .sort({ createdAt: -1 })
-      .populate('planId'),
-    Subscription.findOne({ userId }).sort({ createdAt: -1 }).populate('planId'),
-  ]);
+  const [user, activeSubscription, latestSubscription, freemiumTrialDays] =
+    await Promise.all([
+      User.findById(userId).lean(),
+      Subscription.findOne({
+        userId,
+        status: { $in: ['active', 'trialing'] },
+      })
+        .sort({ createdAt: -1 })
+        .populate('planId'),
+      Subscription.findOne({ userId }).sort({ createdAt: -1 }).populate('planId'),
+      getFreemiumTrialDays(),
+    ]);
 
   let activePlan = null;
   let tier = 'freemium';
@@ -109,15 +140,22 @@ const getUserSubscriptionDetails = async (userId) => {
     : null;
 
   const now = new Date();
+  const isPaidTrialing = !isFreemium && sub?.status === 'trialing';
 
-  const trialStartDate = user?.trialStartDate
+  const trialStartDate = isPaidTrialing
+    ? sub?.currentPeriodStart || sub?.startDate || now
+    : user?.trialStartDate
     ? new Date(user.trialStartDate)
     : user?.createdAt
     ? new Date(user.createdAt)
     : now;
-  const trialEndDate = user?.trialEndDate
+  const trialEndDate = isPaidTrialing
+    ? sub?.currentPeriodEnd || sub?.nextBillingDate || now
+    : user?.trialEndDate
     ? new Date(user.trialEndDate)
-    : new Date(trialStartDate.getTime() + 7 * 24 * 60 * 60 * 1000);
+    : new Date(
+        trialStartDate.getTime() + freemiumTrialDays * 24 * 60 * 60 * 1000,
+      );
 
   const hasCanceledPaidSub =
     isFreemium && latestSubscription && latestSubscription.status === 'canceled';
@@ -151,7 +189,7 @@ const getUserSubscriptionDetails = async (userId) => {
 
   const requiresPlanSelection = isFreemium && isTrialExpired;
 
-  // Only fall back to true during an active 7-day trial if no freemium plan exists in DB,
+  // Only fall back to true during an active trial if no freemium plan exists in DB,
   // or for an active paid plan if no accessibleFeatures array was configured yet.
   const hasConfiguredFeatures =
     activePlan &&
@@ -188,6 +226,9 @@ const getUserSubscriptionDetails = async (userId) => {
     startDate: isFreemium ? null : sub?.startDate || null,
     currentPeriodStart: isFreemium ? null : sub?.currentPeriodStart || null,
     currentPeriodEnd: isFreemium ? null : sub?.currentPeriodEnd || null,
+    trialDays: isFreemium
+      ? freemiumTrialDays
+      : Number(activePlan?.trialDays ?? freemiumTrialDays),
     trialStartDate,
     trialEndDate,
     trialDaysRemaining,
@@ -218,6 +259,7 @@ const syncUserSubscriptionTier = async (userId) => {
 };
 
 module.exports = {
+  getFreemiumTrialDays,
   getUserSubscriptionDetails,
   getUserSubscriptionTier,
   syncUserSubscriptionTier,
