@@ -213,11 +213,12 @@ const getUserSubscriptionDetails = async (userId) => {
     if (hasCanceledPaidSub) {
       resolvedStatus = 'canceled';
     } else if (isTrialActive) {
-      resolvedStatus = 'trialing';
+      resolvedStatus = 'active';
     } else {
       resolvedStatus = 'expired';
     }
   }
+  
 
   return {
     tier: normalizedTier,
