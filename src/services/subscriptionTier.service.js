@@ -218,6 +218,7 @@ const getUserSubscriptionDetails = async (userId) => {
       resolvedStatus = 'expired';
     }
   }
+  
 
   return {
     tier: normalizedTier,
