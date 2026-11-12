@@ -280,21 +280,9 @@ const deletePlan = catchAsync(async (req, res) => {
   });
 });
 
-const triggerTrialReminders = catchAsync(async (req, res) => {
-  const trialReminderService = require('../../services/trialReminder.service');
-  const result = await trialReminderService.sendFreemiumTrialReminders();
-
-  res.status(200).json({
-    status: 200,
-    message: 'Freemium trial reminders executed successfully',
-    data: result,
-  });
-});
-
 module.exports = {
   getPlans,
   createPlan,
   updatePlan,
   deletePlan,
-  triggerTrialReminders,
 };

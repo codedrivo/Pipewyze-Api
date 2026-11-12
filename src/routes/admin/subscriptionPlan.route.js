@@ -7,12 +7,6 @@ router
   .get(auth('admin'), subscriptionPlanController.getPlans)
   .post(auth('admin'), subscriptionPlanController.createPlan);
 
-router.post(
-  '/trigger-trial-reminders',
-  auth('admin'),
-  subscriptionPlanController.triggerTrialReminders,
-);
-
 router
   .route('/:id')
   .put(auth('admin'), subscriptionPlanController.updatePlan)
