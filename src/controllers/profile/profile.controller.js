@@ -52,8 +52,12 @@ const getProfile = catchAsync(async (req, res, next) => {
   delete userData.password;
 
   const { getUserSubscriptionDetails } = require('../../services/subscriptionTier.service');
-  const subscriptionDetails = await getUserSubscriptionDetails(req.user._id);
+  const [subscriptionDetails, unreadNotificationCount] = await Promise.all([
+    getUserSubscriptionDetails(req.user._id),
+    Notification.countDocuments({ userId: req.user._id, read: false }),
+  ]);
   userData.permissions = subscriptionDetails.permissions;
+  userData.unreadNotificationCount = unreadNotificationCount;
 
   if (userData.role === 'licensed-plumber') {
     const plumberService = require('../../services/public/licensed-plumber/licensedPlumber.service');
@@ -63,11 +67,13 @@ const getProfile = catchAsync(async (req, res, next) => {
       );
       delete plumberData.password;
       plumberData.permissions = subscriptionDetails.permissions;
+      plumberData.unreadNotificationCount = unreadNotificationCount;
       res.status(200).send({
         message: 'Profile retrieved successfully',
         data: {
           user: plumberData,
           subscription: subscriptionDetails,
+          unreadNotificationCount,
         },
       });
       return;
@@ -81,6 +87,7 @@ const getProfile = catchAsync(async (req, res, next) => {
     data: {
       user: userData,
       subscription: subscriptionDetails,
+      unreadNotificationCount,
     },
   });
 });
@@ -249,28 +256,56 @@ const getNotifications = catchAsync(async (req, res) => {
   const skip = (page - 1) * limit;
 
   // Mark unread notifications as read only when explicitly requested
-  if (req.query.markAsRead === 'true' || req.query.mark_read === 'true') {
+  const markedRead =
+    req.query.markAsRead === 'true' || req.query.mark_read === 'true';
+  if (markedRead) {
     await Notification.updateMany(
       { userId, read: false },
       { $set: { read: true } },
     );
+    if (global.io) {
+      global.io.to(`user_${userId.toString()}`).emit('notification_count_updated', {
+        unreadCount: 0,
+        unread_count: 0,
+        notificationCount: 0,
+      });
+    }
   }
 
-  const total = await Notification.countDocuments({ userId });
-  const notifications = await Notification.find({ userId })
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(limit);
+  const [total, unreadCount, notifications] = await Promise.all([
+    Notification.countDocuments({ userId }),
+    Notification.countDocuments({ userId, read: false }),
+    Notification.find({ userId })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit),
+  ]);
+
+  const formattedNotifications = notifications.map((n) => {
+    const obj = n.toJSON ? n.toJSON() : { ...n };
+    return {
+      ...obj,
+      message: obj.message || obj.body || '',
+      text: obj.text || obj.body || '',
+    };
+  });
 
   res.status(200).send({
     status: 200,
     message: 'Notifications retrieved successfully',
+    unreadCount,
+    unread_count: unreadCount,
+    notificationCount: unreadCount,
     data: {
-      notifications,
+      notifications: formattedNotifications,
+      unreadCount,
+      unread_count: unreadCount,
+      notificationCount: unreadCount,
       pagination: {
         page,
         limit,
         total,
+        unreadCount,
         totalPages: Math.ceil(total / limit) || 1,
       },
     },

@@ -18,9 +18,13 @@ const notifyAdmin = catchAsync(async (req, res) => {
 });
 
 const { getUserSubscriptionDetails } = require('../../services/subscriptionTier.service');
+const Notification = require('../../models/notification.model');
 
 const buildAuthUserPayload = async (user) => {
-  const subscriptionDetails = await getUserSubscriptionDetails(user._id);
+  const [subscriptionDetails, unreadNotificationCount] = await Promise.all([
+    getUserSubscriptionDetails(user._id),
+    Notification.countDocuments({ userId: user._id, read: false }),
+  ]);
   return {
     ...user.toObject(),
     subscriptionTier: subscriptionDetails.tier,
@@ -31,6 +35,7 @@ const buildAuthUserPayload = async (user) => {
     trialEndDate: subscriptionDetails.trialEndDate,
     trialDaysRemaining: subscriptionDetails.trialDaysRemaining,
     requiresPlanSelection: subscriptionDetails.requiresPlanSelection,
+    unreadNotificationCount,
   };
 };
 
