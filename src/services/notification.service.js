@@ -53,7 +53,11 @@ const sendToTokens = async (userId, tokens, title, body, data = {}) => {
   if (!tokens || tokens.length === 0) return;
 
   // Ensure all data values are string type for FCM payload structure
-  const stringifiedData = {};
+  const stringifiedData = {
+    title: String(title || ''),
+    body: String(body || ''),
+    message: String(body || ''),
+  };
   Object.keys(data).forEach((key) => {
     stringifiedData[key] = String(data[key]);
   });
@@ -94,6 +98,68 @@ const sendToTokens = async (userId, tokens, title, body, data = {}) => {
 };
 
 /**
+ * Persists notification, emits Socket.IO event with unread count & message aliases,
+ * and dispatches FCM push to a user's registered device tokens.
+ */
+const dispatchNotificationToUser = async (user, title, body, data = {}) => {
+  try {
+    const notification = await Notification.create({
+      userId: user._id,
+      title,
+      body,
+      data,
+      type:
+        data.type ||
+        (data.roomId
+          ? 'chat'
+          : data.isAiChat || data.isAi
+          ? 'ai_chat'
+          : 'system'),
+    });
+
+    const unreadCount = await Notification.countDocuments({
+      userId: user._id,
+      read: false,
+    });
+
+    const notifJson = notification.toJSON
+      ? notification.toJSON()
+      : { ...notification };
+    const socketPayload = {
+      ...notifJson,
+      message: notifJson.body || body || '',
+      text: notifJson.body || body || '',
+      unreadCount,
+      unread_count: unreadCount,
+      notificationCount: unreadCount,
+    };
+
+    // Emit real-time notification via Socket.IO
+    if (global.io) {
+      const roomName = `user_${user._id.toString()}`;
+      global.io.to(roomName).emit('new_notification', socketPayload);
+      global.io.to(roomName).emit('notification_count_updated', {
+        unreadCount,
+        unread_count: unreadCount,
+        notificationCount: unreadCount,
+      });
+    }
+  } catch (dbErr) {
+    console.error('Failed saving notification to DB:', dbErr.message);
+  }
+
+  if (user.fcmTokens && user.fcmTokens.length > 0) {
+    return sendToTokens(
+      user._id.toString(),
+      user.fcmTokens,
+      title,
+      body,
+      data,
+    );
+  }
+};
+
+/**
  * Sends notifications to specific users
  * @param {string[]} userIds
  * @param {string} title
@@ -103,44 +169,11 @@ const sendToTokens = async (userId, tokens, title, body, data = {}) => {
 const sendToUsers = async (userIds, title, body, data = {}) => {
   try {
     const users = await User.find({ _id: { $in: userIds } });
-    const promises = users.map(async (user) => {
-      // Save notification to DB
-      try {
-        const notification = await Notification.create({
-          userId: user._id,
-          title,
-          body,
-          data,
-          type:
-            data.type ||
-            (data.roomId
-              ? 'chat'
-              : data.isAiChat || data.isAi
-              ? 'ai_chat'
-              : 'system'),
-        });
-
-        // Emit real-time notification via Socket.IO
-        if (global.io) {
-          global.io
-            .to(`user_${user._id.toString()}`)
-            .emit('new_notification', notification);
-        }
-      } catch (dbErr) {
-        console.error('Failed saving notification to DB:', dbErr.message);
-      }
-
-      if (user.fcmTokens && user.fcmTokens.length > 0) {
-        return sendToTokens(
-          user._id.toString(),
-          user.fcmTokens,
-          title,
-          body,
-          data,
-        );
-      }
-    });
-    await Promise.all(promises);
+    await Promise.all(
+      users.map((user) =>
+        dispatchNotificationToUser(user, title, body, data),
+      ),
+    );
   } catch (error) {
     console.error('Failed sending notifications to users:', error.message);
   }
@@ -156,44 +189,11 @@ const sendToUsers = async (userIds, title, body, data = {}) => {
 const sendToRole = async (role, title, body, data = {}) => {
   try {
     const users = await User.find({ role });
-    const promises = users.map(async (user) => {
-      // Save notification to DB
-      try {
-        const notification = await Notification.create({
-          userId: user._id,
-          title,
-          body,
-          data,
-          type:
-            data.type ||
-            (data.roomId
-              ? 'chat'
-              : data.isAiChat || data.isAi
-              ? 'ai_chat'
-              : 'system'),
-        });
-
-        // Emit real-time notification via Socket.IO
-        if (global.io) {
-          global.io
-            .to(`user_${user._id.toString()}`)
-            .emit('new_notification', notification);
-        }
-      } catch (dbErr) {
-        console.error('Failed saving notification to DB:', dbErr.message);
-      }
-
-      if (user.fcmTokens && user.fcmTokens.length > 0) {
-        return sendToTokens(
-          user._id.toString(),
-          user.fcmTokens,
-          title,
-          body,
-          data,
-        );
-      }
-    });
-    await Promise.all(promises);
+    await Promise.all(
+      users.map((user) =>
+        dispatchNotificationToUser(user, title, body, data),
+      ),
+    );
   } catch (error) {
     console.error(
       `Failed sending notifications to role ${role}:`,
