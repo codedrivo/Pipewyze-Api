@@ -258,21 +258,23 @@ const handleStripeWebhook = async (req, res) => {
         }).sort({ createdAt: -1 });
 
         if (sub) {
+          const firstItem = subscription.items?.data?.[0];
+          const rawPeriodStart =
+            subscription.current_period_start || firstItem?.current_period_start;
+          const rawPeriodEnd =
+            subscription.current_period_end || firstItem?.current_period_end;
+
           sub.status = subscription.status;
           sub.cancelAtPeriodEnd = subscription.cancel_at_period_end || false;
-          if (subscription.current_period_start) {
-            sub.currentPeriodStart = new Date(
-              subscription.current_period_start * 1000,
-            );
+          if (rawPeriodStart) {
+            sub.currentPeriodStart = new Date(rawPeriodStart * 1000);
           }
           if (subscription.status === 'trialing' && subscription.trial_end) {
             const trialEndDate = new Date(subscription.trial_end * 1000);
             sub.currentPeriodEnd = trialEndDate;
             sub.nextBillingDate = trialEndDate;
-          } else if (subscription.current_period_end) {
-            const periodEndDate = new Date(
-              subscription.current_period_end * 1000,
-            );
+          } else if (rawPeriodEnd) {
+            const periodEndDate = new Date(rawPeriodEnd * 1000);
             sub.currentPeriodEnd = periodEndDate;
             sub.nextBillingDate = periodEndDate;
           }

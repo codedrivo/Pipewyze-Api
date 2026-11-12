@@ -290,10 +290,67 @@ const getServicePlans = catchAsync(async (req, res) => {
   });
 });
 
+const {
+  syncUserSubscriptionTier,
+} = require('../../services/subscriptionTier.service');
+const { generateUniqueOrderId } = require('../../helpers/orderId.helper');
+
+/**
+ * Reconciles a local 'trialing' subscription with live Stripe state when queried.
+ */
+const syncTrialingSubscriptionFromStripe = async (userId) => {
+  if (!stripe) return;
+  try {
+    const trialingSub = await Subscription.findOne({
+      userId,
+      status: 'trialing',
+      stripeSubscriptionId: { $regex: /^sub_/ },
+    }).sort({ createdAt: -1 });
+
+    if (!trialingSub || !trialingSub.stripeSubscriptionId) return;
+
+    const stripeSub = await stripe.subscriptions.retrieve(
+      trialingSub.stripeSubscriptionId,
+    );
+    if (!stripeSub || stripeSub.status === 'trialing') return;
+
+    const firstItem = stripeSub.items?.data?.[0];
+    const rawPeriodStart =
+      stripeSub.current_period_start || firstItem?.current_period_start;
+    const rawPeriodEnd =
+      stripeSub.current_period_end || firstItem?.current_period_end;
+
+    trialingSub.status = stripeSub.status;
+    trialingSub.cancelAtPeriodEnd = stripeSub.cancel_at_period_end || false;
+    if (rawPeriodStart) {
+      trialingSub.currentPeriodStart = new Date(rawPeriodStart * 1000);
+    }
+    if (rawPeriodEnd) {
+      const periodEndDate = new Date(rawPeriodEnd * 1000);
+      trialingSub.currentPeriodEnd = periodEndDate;
+      trialingSub.nextBillingDate = periodEndDate;
+    }
+    if (stripeSub.canceled_at) {
+      trialingSub.canceledAt = new Date(stripeSub.canceled_at * 1000);
+    }
+
+    await trialingSub.save();
+    await syncUserSubscriptionTier(userId);
+    logger.info(
+      `[syncTrialingSubscriptionFromStripe] Synced ${trialingSub.stripeSubscriptionId} -> ${stripeSub.status}`,
+    );
+  } catch (err) {
+    logger.warn(
+      `[syncTrialingSubscriptionFromStripe] Could not reconcile Stripe subscription: ${err.message}`,
+    );
+  }
+};
+
 /**
  * Get current authenticated user's active service plan and permissions
  */
 const getUserServicePlan = catchAsync(async (req, res) => {
+  await syncTrialingSubscriptionFromStripe(req.user._id);
   const details = await getUserSubscriptionDetails(req.user._id);
   res.status(200).json({
     status: 'success',
@@ -301,11 +358,6 @@ const getUserServicePlan = catchAsync(async (req, res) => {
     data: details,
   });
 });
-
-const {
-  syncUserSubscriptionTier,
-} = require('../../services/subscriptionTier.service');
-const { generateUniqueOrderId } = require('../../helpers/orderId.helper');
 
 /**
  * Pay / Subscribe to a plan using user's saved card or specified paymentMethodId
@@ -643,10 +695,13 @@ const subscribePlan = catchAsync(async (req, res) => {
       stripeSubscriptionId = stripeSub.id;
       subscriptionStatus =
         stripeSub.status === 'trialing' ? 'trialing' : 'active';
+      const firstSubItem = stripeSub.items?.data?.[0];
+      const rawPeriodEnd =
+        stripeSub.current_period_end || firstSubItem?.current_period_end;
       if (stripeSub.status === 'trialing' && stripeSub.trial_end) {
         periodEnd.setTime(stripeSub.trial_end * 1000);
-      } else if (stripeSub.current_period_end) {
-        periodEnd.setTime(stripeSub.current_period_end * 1000);
+      } else if (rawPeriodEnd) {
+        periodEnd.setTime(rawPeriodEnd * 1000);
       }
       paymentIntentId =
         stripeSub.latest_invoice?.payment_intent?.id ||
