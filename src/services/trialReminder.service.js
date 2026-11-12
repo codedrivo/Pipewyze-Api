@@ -17,7 +17,7 @@ const sendFreemiumTrialReminders = async () => {
   const startOfToday = moment().startOf('day').toDate();
 
   // 1. Exclude users who have an active, trialing, or canceled paid subscription
-  const [nonFreemiumSubs, sentToday, sentExpiredBefore] = await Promise.all([
+  const [nonFreemiumSubs, sentToday, sentExpiredRecent] = await Promise.all([
     Subscription.find({
       status: { $in: ['active', 'trialing', 'canceled'] },
     })
@@ -27,24 +27,36 @@ const sendFreemiumTrialReminders = async () => {
       'data.event': 'trial_reminder',
       createdAt: { $gte: startOfToday },
     })
-      .select('userId')
+      .sort({ createdAt: -1 })
+      .select('userId data')
       .lean(),
     Notification.find({
       'data.event': 'trial_expired',
+      createdAt: { $gte: new Date(now.getTime() - MS_PER_DAY) },
     })
-      .select('userId')
+      .sort({ createdAt: -1 })
+      .select('userId createdAt')
       .lean(),
   ]);
 
   const excludedUserIds = new Set(
     nonFreemiumSubs.map((s) => s.userId.toString()),
   );
-  const notifiedTodayIds = new Set(
-    sentToday.map((n) => n.userId.toString()),
-  );
-  const notifiedExpiredIds = new Set(
-    sentExpiredBefore.map((n) => n.userId.toString()),
-  );
+  const notifiedTodayDaysMap = {};
+  sentToday.forEach((n) => {
+    const uidStr = n.userId.toString();
+    if (notifiedTodayDaysMap[uidStr] === undefined) {
+      const daysVal = n.data?.daysRemaining ?? n.data?.get?.('daysRemaining');
+      notifiedTodayDaysMap[uidStr] = daysVal !== undefined ? String(daysVal) : null;
+    }
+  });
+  const latestExpiredNoticeMap = {};
+  sentExpiredRecent.forEach((n) => {
+    const uidStr = n.userId.toString();
+    if (!latestExpiredNoticeMap[uidStr]) {
+      latestExpiredNoticeMap[uidStr] = new Date(n.createdAt);
+    }
+  });
 
   // 2. Find all non-admin freemium users
   const freemiumUsers = await User.find({
@@ -77,10 +89,10 @@ const sendFreemiumTrialReminders = async () => {
     const msRemaining = trialEnd.getTime() - now.getTime();
 
     if (msRemaining > 0) {
-      if (notifiedTodayIds.has(uid)) continue;
-
       const daysRemaining = Math.max(1, Math.ceil(msRemaining / MS_PER_DAY));
       if (daysRemaining > 7) continue;
+
+      if (notifiedTodayDaysMap[uid] === String(daysRemaining)) continue;
 
       const title =
         daysRemaining === 1
@@ -104,10 +116,9 @@ const sendFreemiumTrialReminders = async () => {
           `[TrialReminder] Failed sending reminder to user ${uid}: ${err.message}`,
         );
       }
-    } else if (
-      msRemaining > -MS_PER_DAY &&
-      !notifiedExpiredIds.has(uid)
-    ) {
+    } else if (msRemaining > -MS_PER_DAY) {
+      const lastExpiredAt = latestExpiredNoticeMap[uid];
+      if (lastExpiredAt && lastExpiredAt >= trialEnd) continue;
       // Trial just expired (within the last 24 hours / Day 8)
       const title = 'Your 7-Day Free Trial Has Ended';
       const body =
