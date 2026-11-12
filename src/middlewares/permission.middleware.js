@@ -20,8 +20,10 @@ const requireFeaturePermission = (featureKey) => {
     const subscriptionDetails = await getUserSubscriptionDetails(req.user._id);
 
     if (subscriptionDetails.requiresPlanSelection) {
+      const trialDays = subscriptionDetails.trialDays;
+      const dayPhrase = trialDays > 0 ? `${trialDays}-day` : 'free';
       throw new ApiError(
-        'Your 7-day free trial has ended. Please choose a Standard or Professional plan to continue.',
+        `Your ${dayPhrase} free trial has ended. Please choose a Standard or Professional plan to continue.`,
         403,
       );
     }

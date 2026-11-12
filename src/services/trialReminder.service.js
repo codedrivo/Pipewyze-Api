@@ -3,18 +3,20 @@ const User = require('../models/user.model');
 const Subscription = require('../models/subscription.model');
 const Notification = require('../models/notification.model');
 const notificationService = require('./notification.service');
+const { getFreemiumTrialDays } = require('./subscriptionTier.service');
 const logger = require('../config/logger');
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
-const TRIAL_DURATION_MS = 7 * MS_PER_DAY;
 
 /**
- * Sends daily countdown reminders to freemium users in their 7-day trial,
- * and a one-time notice when the trial expires on Day 8.
+ * Sends daily countdown reminders to freemium users in their trial period,
+ * and a one-time notice when the trial expires.
  */
 const sendFreemiumTrialReminders = async () => {
   const now = new Date();
   const startOfToday = moment().startOf('day').toDate();
+  const trialDays = await getFreemiumTrialDays();
+  const trialDurationMs = trialDays * MS_PER_DAY;
 
   // 1. Exclude users who have an active, trialing, or canceled paid subscription
   const [nonFreemiumSubs, sentToday, sentExpiredRecent] = await Promise.all([
@@ -84,13 +86,13 @@ const sendFreemiumTrialReminders = async () => {
       : now;
     const trialEnd = user.trialEndDate
       ? new Date(user.trialEndDate)
-      : new Date(trialStart.getTime() + TRIAL_DURATION_MS);
+      : new Date(trialStart.getTime() + trialDurationMs);
 
     const msRemaining = trialEnd.getTime() - now.getTime();
 
     if (msRemaining > 0) {
       const daysRemaining = Math.max(1, Math.ceil(msRemaining / MS_PER_DAY));
-      if (daysRemaining > 7) continue;
+      if (trialDays > 0 && daysRemaining > trialDays) continue;
 
       if (notifiedTodayDaysMap[uid] === String(daysRemaining)) continue;
 
@@ -119,10 +121,11 @@ const sendFreemiumTrialReminders = async () => {
     } else if (msRemaining > -MS_PER_DAY) {
       const lastExpiredAt = latestExpiredNoticeMap[uid];
       if (lastExpiredAt && lastExpiredAt >= trialEnd) continue;
-      // Trial just expired (within the last 24 hours / Day 8)
-      const title = 'Your 7-Day Free Trial Has Ended';
+      const dayPhrase = trialDays > 0 ? `${trialDays}-day` : 'free';
+      const titlePhrase = trialDays > 0 ? `${trialDays}-Day Free Trial` : 'Free Trial';
+      const title = `Your ${titlePhrase} Has Ended`;
       const body =
-        'Your 7-day free trial has expired. Please choose a Standard or Professional plan to continue.';
+        `Your ${dayPhrase} free trial has expired. Please choose a Standard or Professional plan to continue.`;
 
       try {
         await notificationService.sendToUsers([uid], title, body, {

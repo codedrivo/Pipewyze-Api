@@ -1629,8 +1629,10 @@ io.on('connection', async (socket) => {
       if (user.role !== 'admin') {
         const subscriptionDetails = await getUserSubscriptionDetails(uid);
         if (subscriptionDetails.requiresPlanSelection) {
+          const trialDays = subscriptionDetails.trialDays;
+          const dayPhrase = trialDays > 0 ? `${trialDays}-day` : 'free';
           return emitAiSystemReply(
-            'Your 7-day free trial has ended. Please choose a Standard or Professional plan to continue.',
+            `Your ${dayPhrase} free trial has ended. Please choose a Standard or Professional plan to continue.`,
             { requiresPlanSelection: true, upgradeRequired: true },
           );
         }

@@ -5,6 +5,7 @@ const {
   syncUserSubscriptionTier,
 } = require('../../services/subscriptionTier.service');
 const { generateUniqueOrderId } = require('../../helpers/orderId.helper');
+const notificationService = require('../../services/notification.service');
 const logger = require('../../config/logger');
 
 let stripe;
@@ -97,6 +98,8 @@ const handleStripeWebhook = async (req, res) => {
           if (sub) {
             const isInitialCreation =
               invoice.billing_reason === 'subscription_create';
+            const isZeroDollarTrialInvoice =
+              isInitialCreation && Number(invoice.amount_paid || 0) === 0;
 
             const periodStart = invoice.lines?.data?.[0]?.period?.start
               ? new Date(invoice.lines.data[0].period.start * 1000)
@@ -110,6 +113,25 @@ const handleStripeWebhook = async (req, res) => {
               ? new Date(invoice.period_end * 1000)
               : sub.currentPeriodEnd ||
                 new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+            if (isZeroDollarTrialInvoice) {
+              // Preserve 'trialing' on the initial $0 invoice when a trial starts
+              if (sub.status !== 'trialing') {
+                sub.status = 'trialing';
+              }
+              sub.currentPeriodStart = periodStart;
+              sub.currentPeriodEnd = periodEnd;
+              sub.nextBillingDate = periodEnd;
+              if (!sub.stripeSubscriptionId) {
+                sub.stripeSubscriptionId = subscriptionId;
+              }
+              await sub.save();
+              await syncUserSubscriptionTier(sub.userId);
+              logger.info(
+                `[Stripe Webhook] Preserved trialing status on $0 initial invoice for subscription: ${subscriptionId}`,
+              );
+              break;
+            }
 
             // Automatically generate a new Order record for this recurring invoice cycle (must be ORD- with 5 digits)
             // Check if an order for this subscription cycle already exists
@@ -135,6 +157,7 @@ const handleStripeWebhook = async (req, res) => {
                 ),
                 currentPeriodStart: periodStart,
                 currentPeriodEnd: periodEnd,
+                nextBillingDate: periodEnd,
               });
               logger.info(
                 `[Stripe Webhook] Generated recurring order ${recurringOrderId} for subscription ${subscriptionId}`,
@@ -145,6 +168,7 @@ const handleStripeWebhook = async (req, res) => {
             sub.status = 'active';
             sub.currentPeriodStart = periodStart;
             sub.currentPeriodEnd = periodEnd;
+            sub.nextBillingDate = periodEnd;
             if (!sub.stripeSubscriptionId) {
               sub.stripeSubscriptionId = subscriptionId;
             }
@@ -241,13 +265,55 @@ const handleStripeWebhook = async (req, res) => {
               subscription.current_period_start * 1000,
             );
           }
-          if (subscription.current_period_end) {
-            sub.currentPeriodEnd = new Date(
+          if (subscription.status === 'trialing' && subscription.trial_end) {
+            const trialEndDate = new Date(subscription.trial_end * 1000);
+            sub.currentPeriodEnd = trialEndDate;
+            sub.nextBillingDate = trialEndDate;
+          } else if (subscription.current_period_end) {
+            const periodEndDate = new Date(
               subscription.current_period_end * 1000,
             );
+            sub.currentPeriodEnd = periodEndDate;
+            sub.nextBillingDate = periodEndDate;
           }
           await sub.save();
           await syncUserSubscriptionTier(sub.userId);
+        }
+        break;
+      }
+
+      case 'customer.subscription.trial_will_end': {
+        const subscription = event.data.object;
+        const sub = await Subscription.findOne({
+          $or: [
+            { stripeSubscriptionId: subscription.id },
+            { stripeCustomerId: subscription.customer },
+          ],
+        }).sort({ createdAt: -1 });
+
+        if (sub && sub.userId) {
+          const trialEnd = subscription.trial_end
+            ? new Date(subscription.trial_end * 1000)
+            : sub.currentPeriodEnd;
+          const dateLabel = trialEnd
+            ? trialEnd.toISOString().split('T')[0]
+            : 'soon';
+          try {
+            await notificationService.sendToUsers(
+              [sub.userId.toString()],
+              'Your Free Trial Ends Soon',
+              `Your free trial will end on ${dateLabel} and billing will begin automatically unless cancelled.`,
+              {
+                type: 'system',
+                event: 'stripe_trial_will_end',
+                tier: sub.tier || 'standard',
+              },
+            );
+          } catch (notifErr) {
+            logger.warn(
+              `[Stripe Webhook] Failed sending trial_will_end notification for ${subscription.id}: ${notifErr.message}`,
+            );
+          }
         }
         break;
       }
