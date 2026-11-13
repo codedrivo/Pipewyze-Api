@@ -189,25 +189,6 @@ const getUserSubscriptionDetails = async (userId) => {
 
   const requiresPlanSelection = isFreemium && isTrialExpired;
 
-  // Only fall back to true during an active trial if no freemium plan exists in DB,
-  // or for an active paid plan if no accessibleFeatures array was configured yet.
-  const hasConfiguredFeatures =
-    activePlan &&
-    Array.isArray(activePlan.accessibleFeatures) &&
-    activePlan.accessibleFeatures.length > 0;
-
-  if (
-    (isFreemium &&
-      isTrialActive &&
-      (!activePlan ||
-        String(activePlan.tier || '').trim().toLowerCase() !== 'freemium')) ||
-    (!isFreemium && !hasConfiguredFeatures)
-  ) {
-    Object.keys(permissions).forEach((key) => {
-      permissions[key] = true;
-    });
-  }
-
   let resolvedStatus = sub ? sub.status : 'inactive';
   if (isFreemium) {
     if (hasCanceledPaidSub) {
