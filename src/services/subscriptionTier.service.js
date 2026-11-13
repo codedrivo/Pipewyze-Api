@@ -149,6 +149,7 @@ const getUserSubscriptionDetails = async (userId) => {
     : user?.createdAt
     ? new Date(user.createdAt)
     : now;
+
   const trialEndDate = isPaidTrialing
     ? sub?.currentPeriodEnd || sub?.nextBillingDate || now
     : user?.trialEndDate
@@ -157,26 +158,11 @@ const getUserSubscriptionDetails = async (userId) => {
         trialStartDate.getTime() + freemiumTrialDays * 24 * 60 * 60 * 1000,
       );
 
-  const hasCanceledPaidSub =
-    isFreemium && latestSubscription && latestSubscription.status === 'canceled';
-
-  const isTrialActive = isFreemium
-    ? !hasCanceledPaidSub && now < trialEndDate
-    : sub?.status === 'trialing';
-
-  const isTrialExpired = isFreemium
-    ? hasCanceledPaidSub || now >= trialEndDate
-    : false;
+  const isTrialActive = isFreemium ? false : sub?.status === 'trialing';
+  const isTrialExpired = false;
 
   const trialDaysRemaining = isFreemium
-    ? isTrialActive
-      ? Math.max(
-          1,
-          Math.ceil(
-            (trialEndDate.getTime() - now.getTime()) / (24 * 60 * 60 * 1000),
-          ),
-        )
-      : 0
+    ? 0
     : sub?.status === 'trialing' && sub?.currentPeriodEnd
     ? Math.max(
         0,
@@ -187,32 +173,22 @@ const getUserSubscriptionDetails = async (userId) => {
       )
     : 0;
 
-  const requiresPlanSelection = isFreemium && isTrialExpired;
+  const requiresPlanSelection = false;
 
-  let resolvedStatus = sub ? sub.status : 'inactive';
-  if (isFreemium) {
-    if (hasCanceledPaidSub) {
-      resolvedStatus = 'canceled';
-    } else if (isTrialActive) {
-      resolvedStatus = 'active';
-    } else {
-      resolvedStatus = 'expired';
-    }
-  }
-  
+  const resolvedStatus = isFreemium ? 'active' : sub ? sub.status : 'inactive';
 
   return {
     tier: normalizedTier,
     status: resolvedStatus,
-    orderId: sub?.orderId || null,
+    orderId: isFreemium ? null : sub?.orderId || null,
     startDate: isFreemium ? null : sub?.startDate || null,
     currentPeriodStart: isFreemium ? null : sub?.currentPeriodStart || null,
     currentPeriodEnd: isFreemium ? null : sub?.currentPeriodEnd || null,
     trialDays: isFreemium
-      ? freemiumTrialDays
+      ? 0
       : Number(activePlan?.trialDays ?? freemiumTrialDays),
-    trialStartDate,
-    trialEndDate,
+    trialStartDate: isFreemium ? trialStartDate : isPaidTrialing ? trialStartDate : null,
+    trialEndDate: isFreemium ? trialEndDate : isPaidTrialing ? trialEndDate : null,
     trialDaysRemaining,
     isTrialActive,
     isTrialExpired,
