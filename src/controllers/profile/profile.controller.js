@@ -51,12 +51,26 @@ const getProfile = catchAsync(async (req, res, next) => {
   const userData = req.user.toJSON ? req.user.toJSON() : { ...req.user };
   delete userData.password;
 
-  const { getUserSubscriptionDetails } = require('../../services/subscriptionTier.service');
+  const {
+    getUserSubscriptionDetails,
+    syncUserSubscriptionTier,
+  } = require('../../services/subscriptionTier.service');
+
+  await syncUserSubscriptionTier(req.user._id);
+
   const [subscriptionDetails, unreadNotificationCount] = await Promise.all([
     getUserSubscriptionDetails(req.user._id),
     Notification.countDocuments({ userId: req.user._id, read: false }),
   ]);
+
+  userData.subscriptionTier = subscriptionDetails.tier;
   userData.permissions = subscriptionDetails.permissions;
+  userData.isTrialActive = subscriptionDetails.isTrialActive;
+  userData.isTrialExpired = subscriptionDetails.isTrialExpired;
+  userData.trialStartDate = subscriptionDetails.trialStartDate;
+  userData.trialEndDate = subscriptionDetails.trialEndDate;
+  userData.trialDaysRemaining = subscriptionDetails.trialDaysRemaining;
+  userData.requiresPlanSelection = subscriptionDetails.requiresPlanSelection;
   userData.unreadNotificationCount = unreadNotificationCount;
 
   if (userData.role === 'licensed-plumber') {
@@ -66,7 +80,14 @@ const getProfile = catchAsync(async (req, res, next) => {
         req.user._id,
       );
       delete plumberData.password;
+      plumberData.subscriptionTier = subscriptionDetails.tier;
       plumberData.permissions = subscriptionDetails.permissions;
+      plumberData.isTrialActive = subscriptionDetails.isTrialActive;
+      plumberData.isTrialExpired = subscriptionDetails.isTrialExpired;
+      plumberData.trialStartDate = subscriptionDetails.trialStartDate;
+      plumberData.trialEndDate = subscriptionDetails.trialEndDate;
+      plumberData.trialDaysRemaining = subscriptionDetails.trialDaysRemaining;
+      plumberData.requiresPlanSelection = subscriptionDetails.requiresPlanSelection;
       plumberData.unreadNotificationCount = unreadNotificationCount;
       res.status(200).send({
         message: 'Profile retrieved successfully',
@@ -119,11 +140,24 @@ const deepParseJSON = (data) => {
 };
 
 const updateProfile = catchAsync(async (req, res) => {
-  let { fullName, phone, yearsOfService, serviceLocations, servicesOffered } =
-    req.body;
+  let {
+    fullName,
+    firstName,
+    lastName,
+    phone,
+    yearsOfService,
+    serviceLocations,
+    servicesOffered,
+  } = req.body;
+
+  if (!fullName && (firstName || lastName)) {
+    fullName = `${firstName || ''} ${lastName || ''}`.trim();
+  }
 
   const updateData = {
     ...(fullName && { fullName }),
+    ...(firstName && { firstName }),
+    ...(lastName && { lastName }),
   };
 
   if (phone && phone !== req.user.phone) {
@@ -163,14 +197,43 @@ const updateProfile = catchAsync(async (req, res) => {
       req.user._id,
       plumberUpdateBody,
     );
-    delete updatedPlumber.password;
     user = updatedPlumber;
   }
+
+  const {
+    getUserSubscriptionDetails,
+    syncUserSubscriptionTier,
+  } = require('../../services/subscriptionTier.service');
+
+  await syncUserSubscriptionTier(req.user._id);
+
+  const [subscriptionDetails, unreadNotificationCount] = await Promise.all([
+    getUserSubscriptionDetails(req.user._id),
+    Notification.countDocuments({ userId: req.user._id, read: false }),
+  ]);
+
+  const userObj =
+    user && typeof user.toJSON === 'function' ? user.toJSON() : { ...user };
+  delete userObj.password;
+
+  userObj.subscriptionTier = subscriptionDetails.tier;
+  userObj.permissions = subscriptionDetails.permissions;
+  userObj.isTrialActive = subscriptionDetails.isTrialActive;
+  userObj.isTrialExpired = subscriptionDetails.isTrialExpired;
+  userObj.trialStartDate = subscriptionDetails.trialStartDate;
+  userObj.trialEndDate = subscriptionDetails.trialEndDate;
+  userObj.trialDaysRemaining = subscriptionDetails.trialDaysRemaining;
+  userObj.requiresPlanSelection = subscriptionDetails.requiresPlanSelection;
+  userObj.unreadNotificationCount = unreadNotificationCount;
 
   res.status(200).json({
     success: true,
     message: 'Profile updated successfully',
-    data: { user },
+    data: {
+      user: userObj,
+      subscription: subscriptionDetails,
+      unreadNotificationCount,
+    },
   });
 });
 
