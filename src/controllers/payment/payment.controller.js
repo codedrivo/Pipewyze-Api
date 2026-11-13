@@ -382,18 +382,8 @@ const subscribePlan = catchAsync(async (req, res) => {
     );
   }
 
-  const isOneTime =
-    plan.name.toLowerCase().includes('one-time') ||
-    plan.name.toLowerCase().includes('onetime');
-  const isDaily =
-    plan.name.toLowerCase().includes('/day') ||
-    plan.name.toLowerCase().includes('daily');
-
-  const amount = isDaily
-    ? plan.monthlyPrice
-    : billingCycle === 'yearly'
-    ? plan.yearlyPrice
-    : plan.monthlyPrice;
+  const amount =
+    billingCycle === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice;
   if (
     amount === undefined ||
     amount === null ||
@@ -535,19 +525,10 @@ const subscribePlan = catchAsync(async (req, res) => {
     }
   }
 
-  let interval = 'month';
-  if (isDaily) {
-    interval = 'day';
-  } else if (billingCycle === 'yearly') {
-    interval = 'year';
-  } else {
-    interval = 'month';
-  }
+  const interval = billingCycle === 'yearly' ? 'year' : 'month';
 
   const periodEnd = new Date(now);
-  if (isDaily) {
-    periodEnd.setDate(periodEnd.getDate() + 1);
-  } else if (billingCycle === 'yearly') {
+  if (billingCycle === 'yearly') {
     periodEnd.setFullYear(periodEnd.getFullYear() + 1);
   } else {
     periodEnd.setMonth(periodEnd.getMonth() + 1);
@@ -564,33 +545,11 @@ const subscribePlan = catchAsync(async (req, res) => {
 
   // 4. Process payment / subscription in Stripe if price > 0
   if (priceInCents > 0) {
-    if (isOneTime) {
-      // One-time payment intent
-      const paymentIntent = await stripe.paymentIntents.create(
-        {
-          amount: priceInCents,
-          currency: 'usd',
-          customer: customerId,
-          payment_method: defaultPaymentMethodId,
-          off_session: true,
-          confirm: true,
-          description: `Payment for ${plan.name} (${billingCycle})`,
-          metadata: {
-            userId: user._id.toString(),
-            planId: plan._id.toString(),
-            tier: plan.tier || 'standard',
-          },
-        },
-        { idempotencyKey },
-      );
-      paymentIntentId = paymentIntent.id;
-      stripeSubscriptionId = paymentIntent.id;
-    } else {
-      // Recurring Subscription
-      const configuredPriceId =
-        billingCycle === 'yearly'
-          ? plan.stripeYearlyPriceId
-          : plan.stripeMonthlyPriceId;
+    // Recurring Subscription
+    const configuredPriceId =
+      billingCycle === 'yearly'
+        ? plan.stripeYearlyPriceId
+        : plan.stripeMonthlyPriceId;
 
       let subscriptionItem;
       if (configuredPriceId) {
@@ -708,7 +667,6 @@ const subscribePlan = catchAsync(async (req, res) => {
         stripeSub.latest_invoice?.id ||
         stripeSub.id;
     }
-  }
 
   // 4. Update / Save Subscription in Database with 5-digit unique order ID
   const orderId = await generateUniqueOrderId();
@@ -724,7 +682,7 @@ const subscribePlan = catchAsync(async (req, res) => {
     startDate: now,
     currentPeriodStart: now,
     currentPeriodEnd: periodEnd,
-    nextBillingDate: !isOneTime ? periodEnd : undefined,
+    nextBillingDate: periodEnd,
     cancelAtPeriodEnd: false,
   };
 
@@ -776,7 +734,7 @@ const subscribePlan = catchAsync(async (req, res) => {
       isTrialing,
       trialDays: effectiveTrialDays,
       trialEndDate: isTrialing ? periodEnd : null,
-      nextBillingDate: !isOneTime ? periodEnd : null,
+      nextBillingDate: periodEnd,
       user: {
         id: user._id,
         email: user.email,
